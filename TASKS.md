@@ -1,4 +1,4 @@
-# openleet 自动化任务清单
+# Leet Astra 自动化任务清单
 
 `auto-dev.ps1` 每次只取**第一条未勾选**的任务交给模型执行。
 

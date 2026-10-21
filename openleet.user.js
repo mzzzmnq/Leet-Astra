@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         openleet · 题目 AI 助手
+// @name         Leet Astra
 // @namespace    opencode-leet
-// @version      3.0.0
+// @version      3.0.1
 // @description  在 LeetCode 题目页嵌入 AI 对话面板：分步提示 / 讲代码+复杂度 / Debug 报错 / 代码批注 / Python 知识点。纯前端，直接用你自己的 API key。
 // @author       opencode-leet
 // @match        https://leetcode.com/problems/*
@@ -20,7 +20,7 @@
 // ==/UserScript==
 
 /**
- * openleet（独立版）
+ * Leet Astra（独立版）
  * =======================
  * 一个纯前端用户脚本：在 LeetCode 题目页右下角注入对话面板，直接调用 OpenAI 兼容
  * 接口，不需要任何本地服务。
@@ -713,7 +713,7 @@
   const launcher = document.createElement("button");
   launcher.className = "ocleet-launcher";
   launcher.type = "button";
-  launcher.textContent = "⌘ AI 助手";
+  launcher.textContent = "⌘ Leet Astra";
   document.body.appendChild(launcher);
 
   const panel = document.createElement("div");
@@ -722,7 +722,7 @@
   panel.hidden = true;
   panel.innerHTML = `
     <div class="ocleet-head" data-ocleet="drag-handle" title="拖动标题栏移动窗口，双击恢复默认位置">
-      <div class="ocleet-brand"><span class="ocleet-dot" data-ocleet="dot"></span><span>openleet</span></div>
+      <div class="ocleet-brand"><span class="ocleet-dot" data-ocleet="dot"></span><span>Leet Astra</span></div>
       <div class="ocleet-actions">
         <div class="ocleet-font-controls" role="group" aria-label="对话字号">
           <button class="ocleet-icon" type="button" data-ocleet="font-decrease" aria-label="缩小字体" title="缩小字体">A−</button>
@@ -1287,7 +1287,7 @@
         note.textContent = "等待 LeetNote 启动：" + states.map(service => service.name + (service.ready ? " ✓" : " 等待中")).join("；") + "。数据库恢复时会先等待其就绪，请勿重复点击（最多等待 4 分钟）。";
         await new Promise(resolve => setTimeout(resolve, 2000));
       } while (Date.now() < deadline);
-      note.textContent = "未能确认全部服务就绪：" + states.filter(service => !service.ready).map(service => service.name).join("、") + "。请确认本机 openleet 的 scripts 目录也已更新，并允许浏览器打开外部应用。排查日志：%TEMP%\\openleet-leetnote.start.err.log 和 %TEMP%\\openleet-leetnote.start.out.log。";
+      note.textContent = "未能确认全部服务就绪：" + states.filter(service => !service.ready).map(service => service.name).join("、") + "。请确认本机 Leet Astra 的 scripts 目录也已更新，并允许浏览器打开外部应用。排查日志：%TEMP%\\openleet-leetnote.start.err.log 和 %TEMP%\\openleet-leetnote.start.out.log。";
     } catch (error) {
       note.textContent = "无法启动 LeetNote：" + error.message + "。请按 README 检查本机启动器。";
     } finally {

@@ -2,7 +2,7 @@
 #   pwsh -NoProfile -File .\scripts\install-leetnote-launcher.ps1
 #   pwsh -NoProfile -File .\scripts\install-leetnote-launcher.ps1 -LeetNotePath 'D:\Projects\leetnote'
 #   pwsh -NoProfile -File .\scripts\install-leetnote-launcher.ps1 -Uninstall
-# No administrator privileges are needed. Keep this openleet directory in place.
+# No administrator privileges are needed. Keep this Leet Astra directory in place.
 [CmdletBinding(SupportsShouldProcess, DefaultParameterSetName = 'Install')]
 param(
     [Parameter(ParameterSetName = 'Install')]
@@ -30,6 +30,6 @@ $handler = Join-Path $PSScriptRoot 'leetnote-launcher.ps1'
 $runtime = Get-OpenLeetPowerShellPath
 if ($PSCmdlet.ShouldProcess($OpenLeetProtocolKey, "Register fixed start action for $root")) {
     Set-OpenLeetLauncherRegistration -LeetNotePath $root -HandlerPath $handler -PowerShellPath $runtime
-    Write-Output 'Installed. Use the Start LeetNote button in openleet and approve the browser external-app prompt.'
+    Write-Output 'Installed. Use the Start LeetNote button in Leet Astra and approve the browser external-app prompt.'
     Write-Output "Launcher log: $(Get-OpenLeetLauncherLogPath)"
 }

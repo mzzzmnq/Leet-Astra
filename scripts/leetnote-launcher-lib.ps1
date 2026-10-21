@@ -67,7 +67,7 @@ function Set-OpenLeetLauncherRegistration {
     }
     $command = '"{0}" -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "{1}" "%1"' -f $PowerShellPath, $HandlerPath
     $null = New-Item -Path $OpenLeetProtocolKey -Force
-    Set-Item -LiteralPath $OpenLeetProtocolKey -Value 'URL:OpenLeet LeetNote Launcher'
+    Set-Item -LiteralPath $OpenLeetProtocolKey -Value 'URL:Leet Astra LeetNote Launcher'
     $null = New-ItemProperty -LiteralPath $OpenLeetProtocolKey -Name 'URL Protocol' -Value '' -PropertyType String -Force
     $null = New-ItemProperty -LiteralPath $OpenLeetProtocolKey -Name 'OpenLeetLauncher' -Value $OpenLeetLauncherOwner -PropertyType String -Force
     $null = New-ItemProperty -LiteralPath $OpenLeetProtocolKey -Name 'LeetNotePath' -Value $root -PropertyType String -Force

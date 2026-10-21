@@ -23,7 +23,7 @@ TASKS.md ──► auto-dev.ps1 ──► opencode run --auto ──► 改代�
 ## 怎么跑
 
 ```powershell
-cd D:\openleet
+cd "D:\Leet Astra"
 
 # 1. 先看它打算发什么,不调用模型
 .\auto-dev.ps1 -DryRun
@@ -122,7 +122,7 @@ $jobs = @(
 
 $jobs | ForEach-Object {
   Start-Process pwsh -ArgumentList @(
-    "-NoProfile", "-File", "D:\openleet\auto-dev.ps1",
+    "-NoProfile", "-File", "D:\Leet Astra\auto-dev.ps1",
     "-Repo", $_.Repo, "-Model", $_.Model, "-Verify", $_.Verify, "-MaxRounds", "20"
   )
 }

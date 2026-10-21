@@ -1,8 +1,8 @@
-# openleet · LeetCode 题目 AI 助手
+# Leet Astra · LeetCode 题目 AI 助手
 
-openleet 是一个运行在 Tampermonkey（油猴）中的用户脚本。它在 LeetCode 题目页右下角加入 AI 对话面板，读取当前题目和编辑器代码，帮助你获得提示、理解代码和排查错误。
+Leet Astra 是一个运行在 Tampermonkey（油猴）中的用户脚本。它在 LeetCode 题目页右下角加入 AI 对话面板，读取当前题目和编辑器代码，帮助你获得提示、理解代码和排查错误。
 
-**安装即可使用，无需部署后端。** AI 对话需要配置自己的模型服务 API Key，逐行调试可直接使用。当前版本为 **3.0.0**，内置智谱 GLM 和 OpenCode Go 两个供应商入口，可选对接本机 LeetNote 保存笔记。
+**安装即可使用，无需部署后端。** AI 对话需要配置自己的模型服务 API Key，逐行调试可直接使用。当前版本为 **3.0.1**，内置智谱 GLM 和 OpenCode Go 两个供应商入口，可选对接本机 LeetNote 保存笔记。
 
 ## 目录
 
@@ -47,7 +47,7 @@ openleet 是一个运行在 Tampermonkey（油猴）中的用户脚本。它在 
 
 在浏览器中安装并启用 [Tampermonkey](https://www.tampermonkey.net/)。实际调用模型依赖它提供的 `GM_xmlhttpRequest` 等接口。
 
-### 2. 安装 openleet
+### 2. 安装 Leet Astra
 
 打开 [脚本源文件](https://github.com/mzzzmnq/openleet/blob/main/openleet.user.js)，或尝试打开 [原始脚本安装链接](https://raw.githubusercontent.com/mzzzmnq/openleet/main/openleet.user.js)。
 
@@ -57,7 +57,7 @@ openleet 是一个运行在 Tampermonkey（油猴）中的用户脚本。它在 
 ### 3. 配置供应商和 API Key
 
 1. 打开任意 LeetCode 题目页面。
-2. 点击右下角 **⌘ AI 助手**。
+2. 点击右下角 **⌘ Leet Astra**。
 3. 点击面板右上角 **⚙**。
 4. 选择供应商，填写该供应商的 **API Key**。
 5. 检查模型选项，点击输入框外部使设置生效，然后发送一条消息验证。
@@ -70,12 +70,12 @@ openleet 是一个运行在 Tampermonkey（油猴）中的用户脚本。它在 
 
 1. 打开 [最新版脚本源码](https://raw.githubusercontent.com/mzzzmnq/openleet/main/openleet.user.js)，复制全部内容。
 2. 打开 Tampermonkey → **管理面板**。
-3. 找到 **openleet · 题目 AI 助手**，点击名称进入编辑页面。
+3. 找到原有的 **openleet · 题目 AI 助手**（更新后为 **Leet Astra**），点击名称进入编辑页面。
 4. 全选旧代码，粘贴新代码，按 **Ctrl+S** 保存。
 5. 刷新已经打开的 LeetCode 题目页面。
-6. 如需确认版本，检查脚本头部的 `@version`，本版应为 `3.0.0`。
+6. 如需确认版本，检查脚本头部的 `@version`，本版应为 `3.0.1`。
 
-只替换同一脚本的源码，配置和 API Key 通常会保留。不要为了更新先删除原脚本；删除时清理脚本数据可能丢失设置。也不要同时启用多个 openleet 副本。
+只替换同一脚本的源码，配置和 API Key 通常会保留。不要为了更新先删除原脚本；删除时清理脚本数据可能丢失设置。也不要同时启用多个 Leet Astra 副本。
 
 当前源码没有显式设置 `@updateURL` 和 `@downloadURL`，自动更新行为取决于安装来源及脚本管理器设置；上述手动方式可直接使用。
 
@@ -160,7 +160,7 @@ openleet 是一个运行在 Tampermonkey（油猴）中的用户脚本。它在 
 
 ## Python 3 逐行调试
 
-1. 在题目编辑器中选择 **Python 3** 并写入代码，打开 AI 助手 → **逐行调试 · Python 3**。
+1. 在题目编辑器中选择 **Python 3** 并写入代码，打开 Leet Astra → **逐行调试 · Python 3**。
 2. 点击 **读取代码与用例**。调试区导入题目描述中的输入示例，以及当前可见的测试用例编辑框。
 3. LeetCode 中后续添加的测试用例，需要先切换到该用例，再点击读取。已经读取的页面用例会在本次页面会话中保留。也可以点击 **添加用例**，直接输入参数。
 4. 选择用例，点击 **运行当前用例**。每次运行都会重新读取编辑器的最新代码。
@@ -249,12 +249,12 @@ Authorization: Bearer <当前供应商的 API Key>
 
    ```powershell
    cd leetnote-api
-   go run ./cmd/token -user <你的用户名> -name "openleet 插件"
+   go run ./cmd/token -user <你的用户名> -name "Leet Astra 插件"
    ```
 
-   命令在 LeetNote 项目中执行，不是在 openleet 目录中执行；具体以所用服务端版本为准。
+   命令在 LeetNote 项目中执行，不是在 Leet Astra 目录中执行；具体以所用服务端版本为准。
 
-2. 在 openleet 的 **⚙** 中填写 **LeetNote 地址**（默认 `http://127.0.0.1:8080`）和 **LeetNote 令牌**。
+2. 在 Leet Astra 的 **⚙** 中填写 **LeetNote 地址**（默认 `http://127.0.0.1:8080`）和 **LeetNote 令牌**。
 3. 按需勾选 **导入时把最近一次 AI 讲解写进笔记正文**。
 4. 展开底部 **LeetNote** 菜单，点击 **存入 LeetNote**，查看面板中的成功或错误提示。
 
@@ -262,15 +262,15 @@ Authorization: Bearer <当前供应商的 API Key>
 
 面板中的 **启动 LeetNote** 会调用本机启动器，先通过 LeetNote 的 PostgreSQL 启动函数等待数据库能够接受连接（最多 120 秒），成功后再执行项目已有的 `start-all.ps1 -Quiet`。数据库未就绪时会停止后续启动并记录错误，避免数据库仍在恢复时 API 提前启动失败。它会启动 PostgreSQL、可选的 Redis、Go API、AI 服务和网页，已运行的服务会跳过。启动不会自动导入笔记；看到就绪提示后，再点击 **存入 LeetNote**。
 
-**从旧版升级启动器时，除了更新油猴脚本，还需更新本机 openleet 仓库的整个 `scripts/` 目录（例如在该目录运行 `git pull`）。** 只更新油猴脚本不会更新 Windows 本机启动逻辑。项目路径未变时无需重新注册协议。
+**从旧版升级启动器时，除了更新油猴脚本，还需更新本机 Leet Astra 仓库的整个 `scripts/` 目录（例如在该目录运行 `git pull`）。** 只更新油猴脚本不会更新 Windows 本机启动逻辑。项目路径未变时无需重新注册协议。
 
-首次需要在本机安装一次启动器。在 openleet 目录运行（将路径换成你的 LeetNote 项目）：
+首次需要在本机安装一次启动器。在 Leet Astra 目录运行（将路径换成你的 LeetNote 项目）：
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-leetnote-launcher.ps1 -LeetNotePath "D:\Projects\leetnote"
 ```
 
-启动器仅注册当前 Windows 用户的 `openleet-leetnote://start` 协议，无需管理员权限，并调用安装时指定的 LeetNote 项目；网页不能通过该协议传入命令或更换路径。请保留 openleet 目录；项目移动后重新运行安装命令。卸载启动器不会停止服务：
+启动器仅注册当前 Windows 用户的 `openleet-leetnote://start` 协议，无需管理员权限，并调用安装时指定的 LeetNote 项目；网页不能通过该协议传入命令或更换路径。请保留 Leet Astra 目录；项目移动后重新运行安装命令。卸载启动器不会停止服务：
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-leetnote-launcher.ps1 -Uninstall
@@ -294,7 +294,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-leetnote-launche
 
 ```text
 LeetCode 题目页面
-  └─ openleet 用户脚本
+  └─ Leet Astra 用户脚本
        ├─ GM_xmlhttpRequest → 所配置的模型接口
        └─ GM_xmlhttpRequest → 所配置的 LeetNote 服务（点击导出时）
 ```
@@ -312,7 +312,7 @@ LeetCode 题目页面
 
 1. 下载或克隆项目。
 2. 打开本地 `demo.html`，在地址末尾加上 `?ocleet=1`。
-3. 点击 **⌘ AI 助手**，测试读取、聊天展示和代码复制。
+3. 点击 **⌘ Leet Astra**，测试读取、聊天展示和代码复制。
 4. 点击 **读取题目** 检查题目信息；修改演示代码框，再点 **读取当前代码** 检查字符数变化，也可清空代码验证空编辑器提示。
 5. 发送一条消息，输入一段未发送草稿后刷新，检查消息和草稿是否恢复；再点 **清空** 并刷新，确认清除生效。
 6. 切换到 **Python 知识点**，输入 `nums[::-1] 是什么意思？`，查看固定的 Python 切片演示回答。
@@ -352,7 +352,7 @@ python -m http.server 8000 --bind 127.0.0.1
 ### 项目结构
 
 ```text
-openleet/
+Leet Astra/
 ├── openleet.user.js       # 主脚本：配置、题目读取、模型请求、面板与导出
 ├── demo.html              # 离线演示：模拟题目、编辑器和油猴接口
 ├── tests/
@@ -420,6 +420,11 @@ git diff --check
 - 自定义接口的凭据隔离、模型维护和完整性提示仍有改进空间。
 
 ## 版本记录
+
+### 3.0.1
+
+- 项目、页面按钮、面板标题和演示页统一更名为 Leet Astra。
+- 保留原脚本文件名、存储键和启动协议，继续使用已有配置与对话；旧用户请在原脚本中替换源码更新。
 
 ### 3.0.0
 
