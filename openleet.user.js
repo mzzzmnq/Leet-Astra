@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         openleet · 题目 AI 助手
 // @namespace    opencode-leet
-// @version      2.8.1
+// @version      3.0.0
 // @description  在 LeetCode 题目页嵌入 AI 对话面板：分步提示 / 讲代码+复杂度 / Debug 报错 / 代码批注 / Python 知识点。纯前端，直接用你自己的 API key。
 // @author       opencode-leet
 // @match        https://leetcode.com/problems/*
@@ -749,6 +749,7 @@
       <label class="ocleet-check"><input type="checkbox" data-ocleet="include-ai" /><span>导入时把最近一次 AI 讲解写进笔记正文</span></label>
     </div>
     <div class="ocleet-mode-row"><label for="ocleet-mode">问答模式</label><select id="ocleet-mode" class="ocleet-mode-select" data-ocleet="tabs"></select></div>
+    <div style="padding:0 12px 6px"><button class="ocleet-btn" type="button" data-ocleet="open-debugger">逐行调试 · Python 3</button></div>
     <div class="ocleet-hint" data-ocleet="tip" style="padding:0 12px 6px"></div>
     <details class="ocleet-context">
       <summary>题目与代码</summary>
@@ -1569,6 +1570,350 @@
   // LeetCode is a SPA: restore the conversation belonging to the new problem.
   setInterval(() => {
     if (!syncConversation()) return;
+    pythonDebugger.onRouteChange();
     if (!panel.hidden && cfg.autoRead && cfg.mode !== "knowledge") renderProblemChip(readProblem());
   }, 1200);
+
+  // BEGIN GENERATED DEBUGGER
+  const PYTHON_TRACE_SOURCE = "\"\"\"Small, bounded Python tracer used inside the disposable Pyodide worker.\"\"\"\nimport ast\nimport contextlib\nimport inspect\nimport io\nimport itertools\nimport sys\nimport time\nimport tokenize\nimport typing\n\n\nclass ListNode:\n    def __init__(self, val=0, next=None):\n        self.val, self.next = val, next\n\n\nclass TreeNode:\n    def __init__(self, val=0, left=None, right=None):\n        self.val, self.left, self.right = val, left, right\n\n\nclass _Limit(BaseException):\n    pass\n\n\ndef _snapshot(value, depth=0, seen=None):\n    \"\"\"Avoid user-defined repr/iteration/property hooks in debugger snapshots.\"\"\"\n    seen = set() if seen is None else seen\n    kind = type(value)\n    if kind in (type(None), bool, int, float, str):\n        if kind is int and value.bit_length() > 1000:\n            return '<large int>'\n        return repr(value[:200] + ('…' if len(value) > 200 else '')) if kind is str else repr(value)\n    if id(value) in seen:\n        return '<cycle>'\n    if depth >= 3:\n        return '…'\n    seen = seen | {id(value)}\n    render = lambda item: _snapshot(item, depth + 1, seen)\n    if kind in (list, tuple):\n        left, right = ('[', ']') if kind is list else ('(', ')')\n        return left + ', '.join(render(item) for item in value[:20]) + (', …' if len(value) > 20 else '') + right\n    if kind is dict:\n        items = list(itertools.islice(value.items(), 20))\n        return '{' + ', '.join(render(k) + ': ' + render(v) for k, v in items) + (', …' if len(value) > 20 else '') + '}'\n    if kind in (ListNode, TreeNode):\n        fields = ('val', 'next') if kind is ListNode else ('val', 'left', 'right')\n        data = object.__getattribute__(value, '__dict__')\n        return kind.__name__ + '(' + ', '.join(key + '=' + render(data.get(key)) for key in fields) + ')'\n    return '<' + kind.__name__ + '>'\n\n\ndef _inputs(text):\n    if not text.strip():\n        return [], {}\n\n    class Constants(ast.NodeTransformer):\n        def visit_Name(self, node):\n            if node.id in ('true', 'false', 'null'):\n                return ast.copy_location(ast.Constant({'true': True, 'false': False, 'null': None}[node.id]), node)\n            return node\n\n    def literal(node):\n        return ast.literal_eval(Constants().visit(node))\n\n    # NEWLINE ends a logical argument row; NL keeps bracketed values together.\n    rows, tokens = [], []\n    for token in tokenize.generate_tokens(io.StringIO(text).readline):\n        if token.type in (tokenize.INDENT, tokenize.DEDENT, tokenize.ENDMARKER):\n            continue\n        if token.type == tokenize.NEWLINE:\n            rows.append(tokenize.untokenize(tokens).strip())\n            tokens = []\n        elif token.type != tokenize.COMMENT:\n            tokens.append((token.type, token.string))\n    if tokens:\n        rows.append(tokenize.untokenize(tokens).strip())\n    args, kwargs = [], {}\n    for row in rows:\n        if not row:\n            continue\n        call = ast.parse('_input(' + row + ')', mode='eval').body\n        for node in call.args:\n            args.append(literal(node))\n        for item in call.keywords:\n            if item.arg is None or item.arg in kwargs:\n                raise ValueError('Input names must be unique; ** expansion is unsupported')\n            kwargs[item.arg] = literal(item.value)\n    return args, kwargs\n\n\ndef _convert(value, parameter):\n    annotation = parameter.annotation\n    name = annotation if isinstance(annotation, str) else str(annotation)\n    if type(value) is not list:\n        return value\n    if 'ListNode' in name:\n        head = None\n        for item in reversed(value):\n            head = ListNode(item, head)\n        return head\n    if 'TreeNode' in name:\n        if not value or value[0] is None:\n            return None\n        root = TreeNode(value[0])\n        queue, index = [root], 1\n        for parent in queue:\n            for field in ('left', 'right'):\n                if index >= len(value):\n                    return root\n                item = value[index]\n                index += 1\n                if item is not None:\n                    child = TreeNode(item)\n                    setattr(parent, field, child)\n                    queue.append(child)\n        if index < len(value):\n            raise ValueError('Tree input has unreachable nodes')\n        return root\n    return value\n\n\ndef trace_code(code: str, case_text: str, entry: str = ''):\n    events, frame_states, loops = [], {}, {}\n    result = {'events': events, 'result': '', 'stdout': '', 'error': '', 'limited': False, 'entry': entry}\n    started = time.monotonic()\n\n    class Output(io.StringIO):\n        def write(self, text):\n            remaining = 4000 - self.tell()\n            super().write(text[:max(0, remaining)])\n            if len(text) > remaining:\n                raise _Limit('Output limit (4000 characters) reached')\n            return len(text)\n\n    output = Output()\n\n    class Instrument(ast.NodeTransformer):\n        def __init__(self):\n            self.parents = []\n            self.owner = ('<module>', 1)\n\n        def scope(self, node):\n            previous = self.parents, self.owner\n            self.parents = []\n            self.owner = (node.name, min([node.lineno] + [item.lineno for item in node.decorator_list]))\n            self.generic_visit(node)\n            self.parents, self.owner = previous\n            return node\n\n        visit_FunctionDef = scope\n        visit_AsyncFunctionDef = scope\n        visit_ClassDef = scope\n\n        def instrument(self, node):\n            line = node.lineno\n            loops[line] = (node.body[-1].end_lineno, tuple(self.parents), self.owner)\n            self.parents.append(line)\n            self.generic_visit(node)\n            self.parents.pop()\n            injected = ast.Expr(value=ast.Call(func=ast.Name(id='_openleet_tick', ctx=ast.Load()), args=[ast.Constant(line)], keywords=[]))\n            for child in ast.walk(injected):\n                child.lineno = child.end_lineno = 0\n                child.col_offset = child.end_col_offset = 0\n            node.body.insert(0, injected)\n            return node\n\n        visit_For = instrument\n        visit_While = instrument\n\n    def tick(line):\n        frame = sys._getframe(1)\n        state = frame_states.setdefault(id(frame), {})\n        parents = loops[line][1]\n        signature = tuple(state.get(parent, (None, 0))[1] for parent in parents)\n        old_signature, count = state.get(line, (None, 0))\n        state[line] = (signature, count + 1 if signature == old_signature else 1)\n        for child, (_, ancestors, _) in loops.items():\n            if line in ancestors:\n                state.pop(child, None)\n\n    def trace(frame, event, arg):\n        if frame.f_code.co_filename != '<openleet-user>':\n            return trace\n        if time.monotonic() - started > 3:\n            raise _Limit('Execution time limit (3 seconds) reached')\n        if event not in ('line', 'return', 'exception') or frame.f_lineno == 0:\n            return trace\n        if len(events) >= 2000:\n            raise _Limit('Trace limit (2000 events) reached')\n        state = frame_states.setdefault(id(frame), {})\n        depth, parent = 0, frame.f_back\n        while parent:\n            if parent.f_code.co_filename == '<openleet-user>':\n                depth += 1\n            parent = parent.f_back\n        snapshot = {key: _snapshot(value) for key, value in itertools.islice(frame.f_locals.items(), 100)\n                    if not key.startswith('__') and key not in namespace_base}\n        # iteration counts bodies entered so far in this activation. A first\n        # condition/iterator check is 0; body snapshots start at 1.\n        active = [{'line': line, 'iteration': state.get(line, (None, 0))[1]}\n                  for line, (end, _, owner) in loops.items() if line <= frame.f_lineno <= end\n                  and owner == (frame.f_code.co_name, frame.f_code.co_firstlineno)]\n        item = {'line': frame.f_lineno, 'event': 'before' if event == 'line' else event,\n                'locals': snapshot, 'loops': active, 'function': frame.f_code.co_name, 'depth': depth}\n        if event == 'return':\n            item['returnValue'] = _snapshot(arg)\n            frame_states.pop(id(frame), None)\n        elif event == 'exception':\n            item['exception'] = arg[0].__name__ + ': ' + str(arg[1])[:500]\n        events.append(item)\n        return trace\n\n    namespace_base = {name: getattr(typing, name) for name in typing.__all__}\n    namespace_base.update({'ListNode': ListNode, 'TreeNode': TreeNode, '_openleet_tick': tick})\n    namespace = dict(namespace_base)\n    old_trace = sys.gettrace()\n    try:\n        args, kwargs = _inputs(case_text)\n        tree = Instrument().visit(ast.parse(code, filename='<openleet-user>'))\n        compiled = compile(ast.fix_missing_locations(tree), '<openleet-user>', 'exec')\n        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):\n            sys.settrace(trace)\n            exec(compiled, namespace)\n            target = None\n            solution = namespace.get('Solution')\n            candidates = {}\n            if inspect.isclass(solution):\n                instance = solution()\n                candidates.update({name: getattr(instance, name) for name, value in vars(solution).items()\n                                   if not name.startswith('_') and inspect.isfunction(value)})\n            else:\n                candidates.update({name: value for name, value in namespace.items()\n                                   if not name.startswith('_') and inspect.isfunction(value)\n                                   and value.__code__.co_filename == '<openleet-user>'})\n            selected = entry.removeprefix('Solution.')\n            if selected:\n                if selected not in candidates:\n                    raise ValueError('Entry not found: ' + entry)\n                target = candidates[selected]\n            elif len(candidates) == 1:\n                selected, target = next(iter(candidates.items()))\n            elif candidates:\n                raise ValueError('Choose an entry: ' + ', '.join(candidates))\n            elif args or kwargs:\n                raise ValueError('No callable entry found for the supplied inputs')\n            if target:\n                result['entry'] = selected\n                signature = inspect.signature(target)\n                bound = signature.bind(*args, **kwargs)\n                for name, value in bound.arguments.items():\n                    bound.arguments[name] = _convert(value, signature.parameters[name])\n                result['result'] = _snapshot(target(*bound.args, **bound.kwargs))\n    except _Limit as error:\n        result['limited'] = True\n        result['error'] = str(error)\n    except BaseException as error:\n        result['error'] = type(error).__name__ + ': ' + str(error)[:1000]\n    finally:\n        sys.settrace(old_trace)\n        result['stdout'] = output.getvalue()\n    return result\n";
+function parseDescriptionCases(text) {
+  const cases = [];
+  const pattern = /(?:\bInput|输入)\s*[:：]\s*([\s\S]*?)(?:\bOutput|输出)\s*[:：]/gi;
+  for (const match of String(text || '').matchAll(pattern)) {
+    const input = match[1].trim();
+    if (input) cases.push({ name: `题目示例 ${cases.length + 1}`, input, source: 'question' });
+  }
+  return cases;
+}
+
+function readDebugTestCases() {
+  const inputSelector = '[data-e2e-locator="console-testcase-input"], [data-cy="testcase-input"]';
+  const containerSelector = '[data-e2e-locator="console-testcase"], [data-ocleet-testcase], [role="tabpanel"]';
+  const fieldSelector = 'textarea, input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]), [contenteditable="true"], .monaco-editor';
+  const visible = (node) => !!node && node.isConnected !== false
+    && !node.closest('.ocleet-panel, [hidden], [aria-hidden="true"]')
+    && node.getClientRects().length > 0;
+  const isCasePanel = (node) => {
+    if (node.getAttribute('role') !== 'tabpanel') return true;
+    const labels = (node.getAttribute('aria-labelledby') || '').split(/\s+/)
+      .map((id) => document.getElementById(id)?.textContent || '').join(' ');
+    return /test\s*cases?|测试用例/i.test(`${node.getAttribute('aria-label') || ''} ${labels}`);
+  };
+  const containers = Array.from(document.querySelectorAll(containerSelector)).filter((node) => visible(node) && isCasePanel(node));
+  const roots = containers.filter((node) => !containers.some((other) => other !== node && other.contains(node)));
+  const orphans = Array.from(document.querySelectorAll(inputSelector))
+    .filter((node) => visible(node) && !roots.some((root) => root.contains(node)));
+  const groups = roots.map((root) => [root]);
+  if (orphans.length) groups.push(orphans);
+
+  // Only an editor whose DOM belongs to a recognized testcase can supply a model.
+  const models = new Map();
+  try {
+    for (const editor of PAGE.monaco?.editor?.getEditors?.() || []) {
+      try {
+        const node = editor.getDomNode();
+        if (visible(node) && groups.some((group) => group.some((root) => root === node || root.contains(node)))) {
+          const model = editor.getModel();
+          if (model && !model.isDisposed?.()) models.set(node, model.getValue());
+        }
+      } catch { /* An editor may be disposed while reading the page. */ }
+    }
+  } catch { /* DOM inputs remain available when Monaco is inaccessible. */ }
+
+  const results = parseDescriptionCases(readDescription());
+  for (const group of groups) {
+    const fields = [];
+    for (const root of group) {
+      const candidates = root.matches(fieldSelector) ? [root] : Array.from(root.querySelectorAll(fieldSelector));
+      for (const field of candidates) {
+        if (!visible(field) || fields.includes(field)) continue;
+        // Monaco's hidden textarea is an accessibility buffer, not the full input.
+        if (field.closest('.monaco-editor') && !field.matches('.monaco-editor')) continue;
+        if (candidates.some((other) => other !== field && other.contains(field))) continue;
+        fields.push(field);
+      }
+      if (!candidates.length && root.matches(inputSelector)) fields.push(root);
+    }
+    const values = fields.map((field) => {
+      if (field.matches('.monaco-editor')) return models.get(field);
+      return typeof field.value === 'string' ? field.value : field.textContent;
+    });
+    // A missing parameter must not silently shift the remaining arguments.
+    if (values.length && values.every((value) => typeof value === 'string' && value.trim())) {
+      results.push({ name: `当前可见用例 ${results.filter((item) => item.source === 'visible-testcase').length + 1}`, input: values.map((value) => value.trim()).join('\n'), source: 'visible-testcase' });
+    }
+  }
+  const seen = new Set();
+  return results.filter((item) => {
+    if (seen.has(item.input)) return false;
+    seen.add(item.input);
+    return true;
+  });
+}
+
+// Runs in a new Worker for each case. No model credentials or page data are passed.
+function pythonDebugWorker() {
+  let engine;
+  self.onmessage = async ({ data }) => {
+    try {
+      if (data.type === 'load') {
+        importScripts('https://cdn.jsdelivr.net/pyodide/v0.29.3/full/pyodide.js');
+        engine = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.29.3/full/' });
+        engine.runPython(data.engine);
+        self.postMessage({ type: 'ready' });
+      } else if (data.type === 'run' && engine) {
+        engine.globals.set('_oc_code', data.code);
+        engine.globals.set('_oc_case', data.input);
+        engine.globals.set('_oc_entry', data.entry);
+        const result = engine.runPython('import json\njson.dumps(trace_code(_oc_code, _oc_case, _oc_entry), ensure_ascii=False)');
+        self.postMessage({ type: 'result', result: JSON.parse(result) });
+      }
+    } catch (error) {
+      self.postMessage({ type: 'error', error: String(error.message || error) });
+    }
+  };
+}
+
+function createPythonDebugRun(payload, onStatus) {
+  let worker, timer, blobUrl, settled = false, rejectRun;
+  const cleanup = () => {
+    clearTimeout(timer);
+    worker?.terminate();
+    if (blobUrl) URL.revokeObjectURL(blobUrl);
+  };
+  const promise = new Promise((resolve, reject) => {
+    rejectRun = reject;
+    const fail = message => {
+      if (settled) return;
+      settled = true; cleanup(); reject(new Error(message));
+    };
+    try {
+      blobUrl = URL.createObjectURL(new Blob(['(' + pythonDebugWorker.toString() + ')();'], { type: 'text/javascript' }));
+      worker = new Worker(blobUrl);
+      worker.onerror = event => { event.preventDefault(); fail('Python 执行线程加载失败。请检查浏览器是否允许 Worker，以及是否能访问 cdn.jsdelivr.net。'); };
+      timer = setTimeout(() => fail('Python 环境加载超过 90 秒，请检查网络后重试。'), 90000);
+      worker.onmessage = ({ data }) => {
+        if (settled) return;
+        if (data.type === 'ready') {
+          clearTimeout(timer);
+          onStatus('正在执行当前用例并记录变量…');
+          timer = setTimeout(() => fail('代码执行超过 8 秒，已终止执行线程。请检查死循环或缩小用例。'), 8000);
+          worker.postMessage({ type: 'run', ...payload });
+        } else if (data.type === 'result') {
+          settled = true; cleanup(); resolve(data.result);
+        } else if (data.type === 'error') fail(data.error);
+      };
+      onStatus('首次运行需下载 Python 环境（约十余 MB），正在加载…');
+      worker.postMessage({ type: 'load', engine: PYTHON_TRACE_SOURCE });
+    } catch (error) { fail('无法创建 Python 执行线程：' + error.message); }
+  });
+  return { promise, cancel() {
+    if (settled) return;
+    settled = true; cleanup(); rejectRun(new Error('已停止调试。'));
+  } };
+}
+
+function installPythonDebugger() {
+  addStyle(`
+.ocleet-panel.ocleet-debug-open{width:960px;height:88vh;max-height:calc(100vh - 24px)}
+.ocleet-debugger{position:absolute;inset:49px 0 0;z-index:3;background:#12141c;display:flex;flex-direction:column;padding:12px;gap:10px;overflow:auto;font-size:var(--ocleet-font-size,14px)}
+.ocleet-debugger[hidden]{display:none}
+.ocleet-debug-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ocleet-debug-toolbar strong{margin-right:auto}
+.ocleet-debugger label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#b9bed0}
+.ocleet-debugger :is(select,input,textarea){min-width:0;border:1px solid #ffffff26;border-radius:7px;background:#0b0e16;color:#e7e9f0;padding:7px;font:inherit}
+.ocleet-debugger textarea{width:100%;resize:vertical;min-height:62px;max-height:120px;font-family:Consolas,monospace}
+.ocleet-debug-case{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ocleet-debug-status{font-size:12px;color:#c0c8e0;white-space:pre-wrap;overflow-wrap:anywhere}
+.ocleet-debug-workspace{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:10px;flex:1;min-height:210px}
+.ocleet-debug-code{overflow:auto;border:1px solid #ffffff1a;border-radius:8px;background:#0a0d14;min-width:0;min-height:0;max-height:48vh}
+.ocleet-debug-line{display:block;text-align:left;border:0;border-bottom:1px solid #ffffff05;border-radius:0;background:transparent;color:#cbd3e6;padding:3px 8px;white-space:pre;min-width:100%;width:max-content;font:var(--ocleet-font-size,14px)/1.6 Consolas,monospace;cursor:pointer}
+.ocleet-debug-line span{display:inline-block;width:3em;color:#78839e;user-select:none}
+.ocleet-debug-line.active{background:#394470;color:#fff}
+.ocleet-debug-line.visited span{color:#99aaff}
+.ocleet-debug-inspect{overflow:auto;min-width:0;max-height:48vh}
+.ocleet-debug-vars{margin:8px 0;border-top:1px solid #ffffff20}
+.ocleet-debug-vars div{display:grid;grid-template-columns:minmax(60px,auto) 1fr;gap:10px;padding:6px 0;border-bottom:1px solid #ffffff12}
+.ocleet-debug-vars dt{color:#9baeff;font-family:Consolas,monospace}
+.ocleet-debug-vars dd{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-family:Consolas,monospace}
+.ocleet-debug-result{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:110px;overflow:auto;margin:0;color:#bec9df}
+@media(max-width:650px){.ocleet-debug-workspace{grid-template-columns:1fr}.ocleet-debug-code,.ocleet-debug-inspect{max-height:32vh}.ocleet-debug-case{grid-template-columns:1fr}}
+`);
+  const view = document.createElement('section');
+  view.className = 'ocleet-debugger';
+  view.hidden = true;
+  view.setAttribute('aria-label', 'Python 逐行调试');
+  view.innerHTML = `
+    <div class="ocleet-debug-toolbar"><strong>Python 3 · 逐行调试</strong><button class="ocleet-btn" data-debug="back">返回对话</button></div>
+    <div class="ocleet-debug-toolbar"><button class="ocleet-btn" data-debug="read">读取代码与用例</button><button class="ocleet-btn" data-debug="add">添加用例</button><button class="ocleet-btn" data-debug="delete">删除用例</button><button class="ocleet-btn primary" data-debug="run">运行当前用例</button><button class="ocleet-btn" data-debug="stop" disabled>停止</button></div>
+    <div class="ocleet-debug-case"><label>测试用例<select data-debug="case" aria-label="调试测试用例"></select></label><label>入口方法（单一方法自动识别）<input data-debug="entry" placeholder="例如 twoSum" autocomplete="off" /></label></div>
+    <label>当前用例输入（可编辑；每行一个参数，或 nums=[…], target=9）<textarea data-debug="input" aria-label="调试用例输入" spellcheck="false"></textarea></label>
+    <div class="ocleet-debug-status" data-debug="status" role="status">读取后运行用例，再点击代码行查看变量。</div>
+    <div class="ocleet-debug-toolbar"><button class="ocleet-btn" data-debug="prev">上一步</button><button class="ocleet-btn" data-debug="next">下一步</button><label>所选行的执行记录<select data-debug="occurrence" aria-label="执行记录"></select></label></div>
+    <div class="ocleet-debug-workspace"><div class="ocleet-debug-code" data-debug="code" aria-label="点击代码行查看执行状态"></div><div class="ocleet-debug-inspect"><div data-debug="position" class="ocleet-debug-status">尚未运行</div><dl class="ocleet-debug-vars" data-debug="vars"></dl><pre class="ocleet-debug-result" data-debug="result"></pre></div></div>`;
+  panel.appendChild(view);
+  const el = name => view.querySelector(`[data-debug="${name}"]`);
+  let cases = [], selected = 0, snapshot = '', events = [], cursor = -1, activeRun = null;
+  let pageKey = location.pathname, runVersion = 0, lineButtons = [];
+  const savedKey = () => 'debug-cases:' + location.hostname + ':' + (currentSlug() || location.pathname);
+  const status = text => { el('status').textContent = text; };
+  function saveCases() {
+    store.set(savedKey(), cases.filter(c => c.manual).slice(0, 30).map(c => ({ name: c.name, input: c.input })));
+  }
+  function cancel() {
+    runVersion++;
+    activeRun?.cancel(); activeRun = null;
+    el('run').disabled = false; el('stop').disabled = true;
+  }
+  function invalidate() {
+    cancel(); events = []; cursor = -1;
+    el('vars').replaceChildren(); el('result').textContent = '';
+    el('position').textContent = '输入已更新，请运行当前用例。';
+    el('occurrence').replaceChildren();
+    for (const button of lineButtons) button.classList.remove('active', 'visited');
+    el('prev').disabled = el('next').disabled = true;
+  }
+  function populateCases() {
+    el('case').replaceChildren();
+    for (const [i, c] of cases.entries()) {
+      const option = document.createElement('option'); option.value = i;
+      option.textContent = c.name + (c.manual ? ' · 手动' : c.source === 'question' ? ' · 题目示例' : ' · 页面用例');
+      el('case').appendChild(option);
+    }
+    selected = Math.max(0, Math.min(selected, cases.length - 1));
+    el('case').value = String(selected);
+    el('input').value = cases[selected]?.input || '';
+  }
+  function getCode() {
+    const data = readCode();
+    if (!data.code?.trim()) throw new Error('未读取到代码。请先在题目编辑器中输入 Python 3 代码。');
+    if (data.codeIncomplete) throw new Error('仅获取到代码片段。请等完整编辑器加载后再读取。');
+    if (data.lang && !/^(python(?:\s*3)?|py)$/i.test(data.lang.trim())) throw new Error('逐行调试支持 Python 3，请切换题目编辑器语言。当前语言：' + data.lang);
+    if (data.code.length > 30000) throw new Error('当前代码超过 30,000 字符，请缩小后调试。');
+    return data.code;
+  }
+  function renderCode() {
+    el('code').replaceChildren(); lineButtons = [];
+    snapshot.split('\n').forEach((line, index) => {
+      const button = document.createElement('button'); button.type = 'button';
+      button.className = 'ocleet-debug-line';
+      button.setAttribute('aria-label', '第 ' + (index + 1) + ' 行：' + line);
+      const number = document.createElement('span'); number.textContent = index + 1;
+      button.append(number, document.createTextNode(line || ' '));
+      button.addEventListener('click', () => selectLine(index + 1));
+      el('code').appendChild(button); lineButtons.push(button);
+    });
+  }
+  function refresh() {
+    invalidate();
+    try {
+      snapshot = getCode(); renderCode();
+      const imported = readDebugTestCases();
+      const retained = cases.filter(c => c.manual || c.source === 'visible-testcase');
+      const merged = [...retained];
+      for (const item of imported) {
+        if (!merged.some(c => c.input.trim() === item.input.trim())) merged.push(item);
+      }
+      cases = merged.slice(0, 40);
+      if (!cases.length) cases.push({ name: '用例 1', input: '', manual: true });
+      populateCases();
+      status(`已读取 ${snapshot.split('\n').length} 行代码、${imported.length} 个页面用例。手动新增的页面用例请先切到该用例，再点「读取代码与用例」；也可在此添加。`);
+    } catch (error) { status(error.message); }
+  }
+  function selectLine(line) {
+    const indices = events.flatMap((event, i) => event.line === line ? [i] : []);
+    for (const [i, button] of lineButtons.entries()) button.classList.toggle('active', i + 1 === line);
+    if (!indices.length) {
+      cursor = -1;
+      el('prev').disabled = el('next').disabled = true;
+      el('occurrence').replaceChildren(); el('vars').replaceChildren();
+      el('position').textContent = `第 ${line} 行没有执行记录（空行、注释、未执行分支或尚未运行）。`;
+      return;
+    }
+    showEvent(indices.includes(cursor) ? cursor : indices[0]);
+  }
+  function showEvent(index) {
+    cursor = index;
+    const event = events[index]; if (!event) return;
+    for (const [i, button] of lineButtons.entries()) button.classList.toggle('active', i + 1 === event.line);
+    el('occurrence').replaceChildren();
+    let visit = 0;
+    events.forEach((item, i) => {
+      if (item.line !== event.line) return;
+      const option = document.createElement('option'); option.value = i;
+      option.textContent = `第 ${++visit} 次到达 · ${item.function} · ${item.event === 'return' ? '返回' : item.event === 'exception' ? '异常' : '执行前'}`;
+      el('occurrence').appendChild(option);
+    });
+    el('occurrence').value = index;
+    const loops = (event.loops || []).map(loop => `第 ${loop.line} 行循环：第 ${loop.iteration} 次`).join('；');
+    el('position').textContent = `步骤 ${index + 1}/${events.length} · 第 ${event.line} 行 · ${event.function} · 调用深度 ${event.depth}\n${event.event === 'before' ? '该行执行前的变量（下一步查看后续状态）' : event.event === 'return' ? '函数返回：' + event.returnValue : '此行抛出异常：' + event.exception}${loops ? '\n' + loops : ''}`;
+    el('vars').replaceChildren();
+    for (const [name, value] of Object.entries(event.locals || {})) {
+      const row = document.createElement('div'), key = document.createElement('dt'), val = document.createElement('dd');
+      key.textContent = name; val.textContent = value; row.append(key, val); el('vars').appendChild(row);
+    }
+    el('prev').disabled = index <= 0; el('next').disabled = index >= events.length - 1;
+  }
+  async function run() {
+    invalidate();
+    const version = runVersion, path = location.pathname;
+    try {
+      if (pageKey !== location.pathname) { onRouteChange(); throw new Error('题目已切换，请重新读取代码与用例。'); }
+      snapshot = getCode(); renderCode();
+      if (el('input').value.length > 16000) throw new Error('用例输入过长，请缩小后重试。');
+      el('run').disabled = true; el('stop').disabled = false;
+      activeRun = createPythonDebugRun({ code: snapshot, input: el('input').value, entry: el('entry').value.trim() }, status);
+      const result = await activeRun.promise;
+      if (version !== runVersion || path !== location.pathname) return;
+      events = result.events || [];
+      const visited = new Set(events.map(event => event.line));
+      lineButtons.forEach((button, i) => button.classList.toggle('visited', visited.has(i + 1)));
+      el('result').textContent = `返回值：${result.result}\n${result.error ? '错误：' + result.error + '\n' : ''}${result.stdout ? '标准输出：\n' + result.stdout : ''}`;
+      status(`${result.error ? '执行结束，发生错误。' : '执行完成。'}记录 ${events.length} 步。点击代码行查看每次到达时的变量。${result.limited ? '已达到记录限制，轨迹不完整。' : ''}${readCode().code !== snapshot ? '编辑器代码已改变；当前结果对应本次运行的代码快照。' : ''}`);
+      if (events.length) showEvent(0);
+    } catch (error) {
+      if (version === runVersion && path === location.pathname) status(error.message);
+    } finally {
+      if (version === runVersion) { activeRun = null; el('run').disabled = false; el('stop').disabled = true; }
+    }
+  }
+  el('run').addEventListener('click', run);
+  el('stop').addEventListener('click', () => { cancel(); status('已停止。可缩小用例后重新运行。'); });
+  el('read').addEventListener('click', refresh);
+  el('case').addEventListener('change', () => { invalidate(); selected = Number(el('case').value); el('input').value = cases[selected]?.input || ''; });
+  el('entry').addEventListener('input', invalidate);
+  el('input').addEventListener('input', () => {
+    invalidate();
+    if (!cases[selected]) cases.push({ name: '用例 1', input: '', manual: true });
+    cases[selected].input = el('input').value; cases[selected].manual = true; saveCases();
+  });
+  el('add').addEventListener('click', () => {
+    if (cases.filter(c => c.manual).length >= 30) return status('最多保存 30 个手动用例，请先删除不需要的用例。');
+    invalidate(); cases.push({ name: '自定义 ' + (cases.length + 1), input: '', manual: true }); selected = cases.length - 1; populateCases(); saveCases(); el('input').focus();
+  });
+  el('delete').addEventListener('click', () => { invalidate(); cases.splice(selected, 1); populateCases(); saveCases(); });
+  el('prev').addEventListener('click', () => { if (cursor > 0) showEvent(cursor - 1); });
+  el('next').addEventListener('click', () => { if (cursor < events.length - 1) showEvent(cursor + 1); });
+  el('occurrence').addEventListener('change', () => showEvent(Number(el('occurrence').value)));
+  function loadSavedCases() {
+    const saved = store.get(savedKey(), []);
+    cases = Array.isArray(saved) ? saved.filter(c => c && typeof c.input === 'string' && typeof c.name === 'string').slice(0, 30).map(c => ({ ...c, manual: true })) : [];
+  }
+  function onRouteChange() {
+    invalidate(); pageKey = location.pathname; snapshot = ''; renderCode(); el('entry').value = '';
+    loadSavedCases(); populateCases(); status('题目已切换，请读取新题目的代码与用例。');
+  }
+  $('open-debugger').addEventListener('click', () => {
+    if (pageKey !== location.pathname) onRouteChange();
+    view.hidden = false; panel.classList.add('ocleet-debug-open'); restorePanelPosition();
+    if (!snapshot) { loadSavedCases(); refresh(); }
+  });
+  el('back').addEventListener('click', () => { cancel(); view.hidden = true; panel.classList.remove('ocleet-debug-open'); restorePanelPosition(); });
+  window.addEventListener('pagehide', cancel);
+  invalidate();
+  return { onRouteChange };
+}
+
+  const pythonDebugger = installPythonDebugger();
+  // END GENERATED DEBUGGER
 })();

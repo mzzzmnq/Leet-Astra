@@ -28,6 +28,7 @@
           （`GM_xmlhttpRequest` 返回预置的流式回答），用来离线预览面板。右下角点
           <code>⌘ AI 助手</code> 试试。<br />
           必须以带 <code>?ocleet=1</code> 的地址打开；真实使用时不需要这个页面。
+          Python 逐行调试执行真实代码，首次使用需要联网下载 Python 环境。
         </p>
       </div>
 
@@ -43,22 +44,28 @@
         <div class="desc" data-track-load="description_content">
           <p>给定一个整数数组 <code>nums</code> 和一个整数目标值 <code>target</code>，请你在该数组中找出和为目标值 <code>target</code> 的那两个整数，并返回它们的数组下标。</p>
           <p>你可以假设每种输入只会对应一个答案。但是，数组中同一个元素在答案里不能重复出现。</p>
+          <pre>输入：nums = [2,7,11,15], target = 9
+输出：[0,1]</pre>
+          <pre>输入：nums = [3,2,4], target = 6
+输出：[1,2]</pre>
         </div>
         <label for="demo-code">模拟编辑器（修改后可再次点击「读取当前代码」）</label>
         <textarea id="demo-code" spellcheck="false" style="display:block;box-sizing:border-box;width:100%;height:220px;margin-top:8px;font-family:Consolas,monospace"></textarea>
+        <div data-ocleet-testcase><label>当前测试用例（可模拟手动添加）<textarea aria-label="页面测试用例" style="display:block;width:100%">[3,3]
+6</textarea></label></div>
       </div>
     </div>
 
     <script>
       // ---- fake Monaco ----
       const demoCode = document.getElementById("demo-code");
-      demoCode.value = "class Solution {\npublic:\n    vector<int> twoSum(vector<int>& nums, int target) {\n        for (int i = 0; i < nums.size(); i++)\n            for (int j = i + 1; j < nums.size(); j++)\n                if (nums[i] + nums[j] == target) return {i, j};\n        return {};\n    }\n};";
+      demoCode.value = "class Solution:\n    def twoSum(self, nums: List[int], target: int) -> List[int]:\n        seen = {}\n        for i, num in enumerate(nums):\n            need = target - num\n            if need in seen:\n                return [seen[need], i]\n            seen[num] = i\n        return []";
       window.monaco = {
         editor: {
           getModels: function () {
             return [
               {
-                getLanguageId: function () { return "cpp"; },
+                getLanguageId: function () { return "python"; },
                 getValue: function () {
                   return demoCode.value;
                 },
@@ -136,7 +143,7 @@
           const isKnowledge = system.includes("模式：Python 知识点");
           const isAnnotation = system.includes("模式：代码批注");
           const reply = isAnnotation
-            ? "```cpp\n// 【提示】这是离线批注演示，未实际分析代码。\n" + document.getElementById("demo-code").value + "\n```"
+            ? "```python\n# 【提示】这是离线批注演示，未实际分析代码。\n" + document.getElementById("demo-code").value + "\n```"
             : isKnowledge ? PYTHON_REPLY : REPLY;
           const events = [
             { choices: [{ delta: { reasoning_content: isAnnotation ? "展示当前代码的批注样式。" : isKnowledge ? "使用最小示例解释 Python 切片。" : "用户问的是两数之和的最优解法。" } }] },
