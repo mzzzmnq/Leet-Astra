@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Leet Astra
 // @namespace    opencode-leet
-// @version      3.0.1
+// @version      3.1.0
 // @description  在 LeetCode 题目页嵌入 AI 对话面板：分步提示 / 讲代码+复杂度 / Debug 报错 / 代码批注 / Python 知识点。纯前端，直接用你自己的 API key。
 // @author       opencode-leet
 // @match        https://leetcode.com/problems/*
@@ -27,9 +27,7 @@
  *
  *   browser (leetcode.com)  --GM_xmlhttpRequest-->  <baseUrl>/chat/completions
  *
- * **默认供应商是智谱 GLM-4.5-Flash（免费、国内直连）**；
- * 想改用 OpenCode Go，在 ⚙ 里把接口地址换成 https://opencode.ai/zen/go/v1 即可
- * （代码会自动给 OpenCode Go 补上 x-opencode-session 头）。
+ * 默认使用智谱 GLM-4.7-Flash；可切换 OpenRouter 免费编码模型。
  *
  * 为什么必须用 GM_xmlhttpRequest：多数模型服务不返回 CORS 头，页面里的 fetch 会被
  * 浏览器拦；油猴的 GM_xmlhttpRequest 在扩展层发请求，可绕过 CORS。API key 存在
@@ -44,7 +42,7 @@
  *
  * 注意：必须通过 Tampermonkey 安装。若检测不到 GM_xmlhttpRequest（例如被当作普通
  * 网页脚本加载），会退回 fetch —— 那样会因 CORS 失败。
- * 元数据里的 `@connect *` 是为了支持「用户自定义接口地址」；只发给配置的那个端点。
+ * 模型请求发往所选供应商；`@connect *` 保留用于可配置的 LeetNote 服务地址。
  */
 (function () {
   "use strict";
@@ -115,83 +113,53 @@
   /* ----------------------------------------------------------------- config */
   const DEFAULTS = {
     apiKey: "", // 兼容旧配置（会迁移到下面的 keys）
-    // 默认用智谱 GLM-4.5-Flash（免费、国内直连、实测较稳）。
+    // 默认使用智谱免费 GLM-4.7-Flash。
     baseUrl: "https://open.bigmodel.cn/api/paas/v4",
-    model: "glm-4.5-flash",
+    model: "glm-4.7-flash",
     includeCode: true,
     autoRead: true,
     mode: "hint",
     fontSize: 14,
     // 每个供应商各存一把 key —— 切换供应商时不会把 A 家的 key 发到 B 家
-    keys: { zhipu: "", opencode: "" },
+    keys: { zhipu: "", openrouter: "" },
     // ---- 导出到 LeetNote ----
     leetnoteUrl: "http://127.0.0.1:8080",
     leetnoteToken: "",
     includeAi: true,
   };
   const cfg = { ...DEFAULTS, ...(store.get("config") || {}) };
-  if (!cfg.keys) cfg.keys = { zhipu: "", opencode: "" };
-  const saveCfg = () => store.set("config", cfg);
-
-  // 可切换的供应商（下拉里用）。模型候选见 modelsForBase()。
   const PROVIDERS = {
-    zhipu: { label: "智谱 GLM（免费）", baseUrl: "https://open.bigmodel.cn/api/paas/v4" },
-    opencode: { label: "OpenCode Go", baseUrl: "https://opencode.ai/zen/go/v1" },
+    zhipu: { label: "智谱 · 免费", baseUrl: "https://open.bigmodel.cn/api/paas/v4", keyUrl: "https://bigmodel.cn/usercenter/proj-mgmt/apikeys",
+      tip: "GLM-4.7-Flash 免费调用，适合中文题解和代码问答。需要智谱 API Key，高峰期可能限流。" },
+    openrouter: { label: "OpenRouter · 免费", baseUrl: "https://openrouter.ai/api/v1", keyUrl: "https://openrouter.ai/settings/keys",
+      tip: "需要单独注册 OpenRouter 并创建 API Key。这里只列出免费版本；有请求额度和容量限制，失败时可手动换模型。" },
   };
-  const goBase = () => (cfg.baseUrl || DEFAULTS.baseUrl).replace(/\/+$/, "");
+  const providerForBase = base => Object.keys(PROVIDERS).find(p =>
+    PROVIDERS[p].baseUrl === String(base || "").replace(/\/+$/, ""));
+  // Migrate only keys belonging to a recognized endpoint; discard retired keys.
+  const savedProvider = providerForBase(cfg.baseUrl);
+  cfg.keys = { zhipu: String(cfg.keys?.zhipu || ""), openrouter: String(cfg.keys?.openrouter || "") };
+  if (savedProvider && cfg.apiKey && !cfg.keys[savedProvider]) cfg.keys[savedProvider] = cfg.apiKey;
+  cfg.apiKey = "";
+  if (!savedProvider) { cfg.baseUrl = DEFAULTS.baseUrl; cfg.model = DEFAULTS.model; }
+  const saveCfg = () => store.set("config", cfg);
+  const currentProvider = () => providerForBase(cfg.baseUrl) || "zhipu";
+  const goBase = () => PROVIDERS[currentProvider()].baseUrl;
   const chatUrl = () => goBase() + "/chat/completions";
-  const usageUrl = () => goBase() + "/usage";
-  // 只有 OpenCode Go 需要专用会话头，也只有它有 /usage 可用来校验 key。
-  const isOpenCode = () => /opencode\.ai/i.test(goBase());
-  const currentProvider = () => (isOpenCode() ? "opencode" : "zhipu");
-
-  // OpenCode Go 的模型候选（走 OpenAI 兼容 /chat/completions；MiniMax/Qwen 走
-  // /messages、Grok/Muse 走 /responses，不在这个列表里）。
-  const OPENCODE_MODELS = [
-    { id: "deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash" },
-    { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
-    { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
-    { id: "deepseek-v4-flash-vision-exp", label: "DeepSeek V4 Flash Vision Exp" },
-    { id: "glm-5.3-flash", label: "GLM-5.3-Flash" },
-    { id: "glm-5.3", label: "GLM-5.3" },
-    { id: "glm-5.2", label: "GLM-5.2" },
-    { id: "glm-5.1", label: "GLM-5.1" },
-    { id: "glm-5", label: "GLM-5" },
-    { id: "kimi-k3", label: "Kimi K3" },
-    { id: "kimi-k2.7-code", label: "Kimi K2.7 Code" },
-    { id: "kimi-k2.6", label: "Kimi K2.6" },
-    { id: "kimi-k2.5", label: "Kimi K2.5" },
-    { id: "longcat-2.0", label: "LongCat-2.0" },
-    { id: "longcat-2.5-preview-free", label: "LongCat 2.5 Preview Free" },
-    { id: "step-5-preview-free", label: "Step 5 Preview Free" },
-    { id: "mimo-v2.6-flash", label: "MiMo-V2.6-Flash" },
-    { id: "mimo-v2.6-pro", label: "MiMo-V2.6-Pro" },
-    { id: "mimo-v2.5", label: "MiMo-V2.5" },
-    { id: "mimo-v2.5-pro", label: "MiMo-V2.5-Pro" },
-    { id: "mimo-v2-pro", label: "MiMo-V2 Pro" },
-    { id: "mimo-v2-omni", label: "MiMo V2 Omni" },
-    { id: "hy4-preview", label: "Hy4 preview" },
-    { id: "hy3", label: "Hy3" },
-    { id: "space-bunny", label: "Space Bunny" },
-  ];
-
-  // 智谱（默认供应商）的模型候选。
-  // glm-4.5-flash 免费且实测较稳；glm-4.7-flash 也免费但常被限流。
+  // Official free pricing checked 2026-10-22; use explicit free variants.
   const ZHIPU_MODELS = [
-    { id: "glm-4.5-flash", label: "GLM-4.5-Flash（免费·较稳）" },
-    { id: "glm-4.7-flash", label: "GLM-4.7-Flash（免费·常限流）" },
-    { id: "glm-4.7", label: "GLM-4.7（付费）" },
-    { id: "glm-4.5-air", label: "GLM-4.5-Air（付费）" },
-    { id: "glm-4.5", label: "GLM-4.5（付费）" },
+    { id: "glm-4.7-flash", label: "GLM-4.7-Flash · 免费", tip: "中文解题、代码解释与轻量推理。" },
   ];
-
-  // 按当前 base_url 选模型候选；换供应商就换一套。
+  const OPENROUTER_MODELS = [
+    { id: "minimax/minimax-m3.1-flash:free", label: "MiniMax M3.1 Flash · 免费", tip: "编程使用榜活跃，适合代码分析和多步骤问题。" },
+    { id: "nvidia/nemotron-3-ultra-550b-a55b:free", label: "Nemotron 3 Ultra · 免费", tip: "编程使用榜活跃，适合复杂推理和代码排错。" },
+    { id: "cohere/north-mini-code:free", label: "North Mini Code · 免费", tip: "专门面向代码生成和软件工程的轻量模型。" },
+  ];
   function modelsForBase() {
-    const base = goBase();
-    if (/bigmodel\.cn/i.test(base)) return ZHIPU_MODELS;
-    if (/opencode\.ai/i.test(base)) return OPENCODE_MODELS;
-    return ZHIPU_MODELS;
+    return currentProvider() === "openrouter" ? OPENROUTER_MODELS : ZHIPU_MODELS;
   }
+  if (!modelsForBase().some(m => m.id === cfg.model)) cfg.model = modelsForBase()[0].id;
+  saveCfg();
 
   /* ----------------------------------------------------------------- skills */
   const BASE_SYSTEM = [
@@ -503,7 +471,7 @@
   }
 
   /**
-   * Call OpenCode Go directly via GM_xmlhttpRequest, which bypasses the missing
+   * Call the selected provider via GM_xmlhttpRequest, which bypasses the missing
    * CORS headers. Streams incrementally when the userscript manager exposes
    * partial `responseText` in `onprogress`; otherwise the whole answer lands at
    * `onload` (still parsed and rendered).
@@ -548,9 +516,9 @@
             }
             const delta = json.choices && json.choices[0] && json.choices[0].delta;
             if (!delta) continue;
-            if (delta.reasoning_content) {
+            if (delta.reasoning_content || delta.reasoning) {
               received = true;
-              onReasoning(delta.reasoning_content);
+              onReasoning(delta.reasoning_content || delta.reasoning);
             }
             if (delta.content) {
               received = true;
@@ -563,15 +531,11 @@
       GM_xmlhttpRequest({
         method: "POST",
         url: chatUrl(),
-        headers: Object.assign(
-          {
-            "content-type": "application/json",
-            authorization: `Bearer ${key}`,
-            accept: "text/event-stream",
-          },
-          // 只有 OpenCode Go 需要这个头（不带会 503）；其它供应商不必发
-          isOpenCode() ? { "x-opencode-session": "ocleet-" + Date.now() } : {},
-        ),
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${key}`,
+          accept: "text/event-stream",
+        },
         data: JSON.stringify({ ...payload, stream: true }),
         timeout: 180_000,
         onprogress: (r) => {
@@ -606,26 +570,11 @@
     });
   }
 
-  /**
-   * 校验存储的 key。OpenCode Go 有 /usage 端点（200 好 / 401 坏）；
-   * 智谱等其它供应商没有轻量校验端点，只判断「有没有填」，真正的错误在对话时暴露。
-   */
+  // Presence only; authentication is verified by the actual chat request.
   function checkKey() {
-    const key = cleanKey();
-    if (!key) return Promise.resolve({ ok: false, reason: "no-key" });
+    if (!cleanKey()) return Promise.resolve({ ok: false, reason: "no-key" });
     if (!hasGM()) return Promise.resolve({ ok: false, reason: "no-gm" });
-    if (!isOpenCode()) return Promise.resolve({ ok: true });
-    return new Promise((resolve) => {
-      GM_xmlhttpRequest({
-        method: "GET",
-        url: usageUrl(),
-        headers: { authorization: `Bearer ${key}`, accept: "application/json" },
-        timeout: 20_000,
-        onload: (r) => resolve(r.status >= 200 && r.status < 300 ? { ok: true } : { ok: false, reason: "http", status: r.status }),
-        onerror: () => resolve({ ok: false, reason: "network" }),
-        ontimeout: () => resolve({ ok: false, reason: "timeout" }),
-      });
-    });
+    return Promise.resolve({ ok: true });
   }
 
   /* ------------------------------------------------------------------- style */
@@ -634,7 +583,7 @@
   background:linear-gradient(135deg,#5b7cfa,#8a5cf6);color:#fff;font:600 14px/1 -apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
   box-shadow:0 10px 26px rgba(70,90,220,.4);transition:transform .12s ease,filter .12s ease}
 .ocleet-launcher:hover{filter:brightness(1.08);transform:translateY(-1px)}
-.ocleet-panel{position:fixed;right:12px;bottom:78px;z-index:2147483000;width:440px;max-width:calc(100% - 24px);height:min(82vh,820px);display:flex;flex-direction:column;
+.ocleet-panel{position:fixed;right:12px;bottom:78px;z-index:2147483000;width:460px;max-width:calc(100% - 24px);height:min(82vh,820px);display:flex;flex-direction:column;
   background:#12141c;color:#e7e9f0;border:1px solid rgba(255,255,255,.1);border-radius:16px;overflow:hidden;
   box-shadow:0 22px 70px rgba(0,0,0,.55);font:13px/1.6 -apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif}
 .ocleet-panel[hidden]{display:none}
@@ -693,16 +642,26 @@
 .ocleet-composer textarea{display:block;width:100%;resize:vertical;min-height:52px;max-height:min(160px,22vh);background:#0c0e15;border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#e7e9f0;padding:9px 10px;font:inherit;font-size:var(--ocleet-font-size,14px)}
 .ocleet-composer textarea:focus{outline:none;border-color:rgba(138,120,255,.6)}
 .ocleet-composer-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
-.ocleet-hint{font-size:11.5px;color:#8f95a8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ocleet-hint{font-size:11.5px;color:#a4aec4;white-space:normal;line-height:1.5}
 .ocleet-btns{display:flex;gap:6px;flex-shrink:0}
-.ocleet-context-actions{display:flex;gap:6px;margin-top:6px}
-.ocleet-context-actions .ocleet-btn{flex:1;min-width:0}
 .ocleet-btn{border-radius:9px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#dfe2ec;padding:8px 11px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;line-height:1.3}
 .ocleet-btn:hover{background:rgba(255,255,255,.12)}
 .ocleet-btn:disabled{opacity:.5;cursor:not-allowed}
 .ocleet-btn.primary{background:linear-gradient(135deg,#5b7cfa,#8a5cf6);border-color:transparent;color:#fff}
 .ocleet-btn.primary[disabled]{opacity:.55;cursor:default}
 .ocleet-cursor{display:inline-block;width:7px;height:14px;background:#8a5cf6;vertical-align:-2px;animation:ocleet-blink 1s steps(2) infinite}
+.ocleet-work-tools{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding:4px 12px 10px}
+.ocleet-work-tools .ocleet-btn{padding:9px 4px}
+.ocleet-model-bar{display:flex;align-items:center;gap:8px;padding:10px 12px 0;color:#929db4;font-size:11px}
+.ocleet-model-bar button{flex:1;min-width:0;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;background:transparent;color:#c9d5ff;font:inherit;cursor:pointer;padding:3px}
+.ocleet-section-label{font-size:11px;font-weight:700;color:#aabaff;letter-spacing:.08em;border-top:1px solid #ffffff12;padding-top:10px}
+.ocleet-provider-info{border:1px solid #637bba38;border-radius:10px;padding:10px;background:#718deb0a;font-size:12px;color:#b3bdd2}
+.ocleet-provider-info p{margin:0 0 6px;line-height:1.6}
+.ocleet-provider-info a{color:#a9bdff}
+.ocleet-settings-notes{border-top:1px solid #ffffff12;padding-top:10px}
+.ocleet-settings-notes summary{cursor:pointer;color:#c7cede;font-size:12px}
+.ocleet-settings-notes .ocleet-field,.ocleet-settings-notes .ocleet-check{margin-top:10px}
+.ocleet-field input[readonly]{color:#818ba0}
 @keyframes ocleet-blink{0%,50%{opacity:1}50.01%,100%{opacity:0}}
 @media(max-height:600px){.ocleet-panel{height:calc(100dvh - 24px);bottom:12px}.ocleet-composer{padding:8px 12px}.ocleet-mode-row{padding-top:6px}}
 `;
@@ -734,29 +693,28 @@
       </div>
     </div>
     <div class="ocleet-settings" data-ocleet="settings-box" hidden>
-      <div class="ocleet-settings-title">设置<button class="ocleet-btn" type="button" data-ocleet="settings-done">完成</button></div>
-      <label class="ocleet-field"><span>供应商</span><select data-ocleet="provider">
+      <div class="ocleet-settings-title">模型与偏好<button class="ocleet-btn" type="button" data-ocleet="settings-done">完成</button></div>
+      <div class="ocleet-section-label">模型连接</div><label class="ocleet-field"><span>供应商</span><select data-ocleet="provider">
         <option value="zhipu">智谱 GLM（免费）</option>
-        <option value="opencode">OpenCode Go</option>
+        <option value="openrouter">OpenRouter · 免费编码模型</option>
       </select></label>
       <label class="ocleet-field"><span>API Key（当前供应商）</span><input type="password" data-ocleet="apikey" placeholder="粘贴你该供应商的 API Key" autocomplete="off" /></label>
-      <label class="ocleet-field"><span>接口地址（一般不用改）</span><input type="text" data-ocleet="baseurl" /></label>
-      <label class="ocleet-field"><span>模型</span><select data-ocleet="model"></select></label>
-      <label class="ocleet-check"><input type="checkbox" data-ocleet="include-code" /><span>把当前编辑器里的代码发给模型</span></label>
+      <label class="ocleet-field"><span>接口地址（随供应商切换）</span><input type="text" data-ocleet="baseurl" readonly /></label>
+      <label class="ocleet-field"><span>免费模型</span><select data-ocleet="model"></select></label>
+      <div class="ocleet-provider-info"><p data-ocleet="provider-tip"></p><p data-ocleet="model-tip"></p><a data-ocleet="key-link" target="_blank" rel="noopener noreferrer">获取当前供应商的 API Key ↗</a></div>
+      <div class="ocleet-section-label">题目上下文</div><label class="ocleet-check"><input type="checkbox" data-ocleet="include-code" /><span>把当前编辑器里的代码发给模型</span></label>
       <label class="ocleet-check"><input type="checkbox" data-ocleet="auto-read" /><span>打开面板时自动读取题目</span></label>
-      <label class="ocleet-field"><span>LeetNote 地址</span><input type="text" data-ocleet="leetnote-url" placeholder="http://127.0.0.1:8080" /></label>
+      <details class="ocleet-settings-notes"><summary>LeetNote 笔记设置</summary><label class="ocleet-field"><span>LeetNote 地址</span><input type="text" data-ocleet="leetnote-url" placeholder="http://127.0.0.1:8080" /></label>
       <label class="ocleet-field"><span>LeetNote 令牌（ln_…）</span><input type="password" data-ocleet="leetnote-token" placeholder="ln_…" autocomplete="off" /></label>
-      <label class="ocleet-check"><input type="checkbox" data-ocleet="include-ai" /><span>导入时把最近一次 AI 讲解写进笔记正文</span></label>
+      <label class="ocleet-check"><input type="checkbox" data-ocleet="include-ai" /><span>导入时把最近一次 AI 讲解写进笔记正文</span></label></details>
     </div>
+    <div class="ocleet-model-bar"><span>当前模型</span><button type="button" data-ocleet="model-shortcut"></button></div>
     <div class="ocleet-mode-row"><label for="ocleet-mode">问答模式</label><select id="ocleet-mode" class="ocleet-mode-select" data-ocleet="tabs"></select></div>
-    <div style="padding:0 12px 6px"><button class="ocleet-btn" type="button" data-ocleet="open-debugger">逐行调试 · Python 3</button></div>
+    <div class="ocleet-work-tools"><button class="ocleet-btn" type="button" data-ocleet="read">读取题目</button><button class="ocleet-btn" type="button" data-ocleet="read-code">读取当前代码</button><button class="ocleet-btn" type="button" data-ocleet="open-debugger">逐行调试</button></div>
     <div class="ocleet-hint" data-ocleet="tip" style="padding:0 12px 6px"></div>
     <details class="ocleet-context">
-      <summary>题目与代码</summary>
-      <div class="ocleet-context-actions">
-        <button class="ocleet-btn" type="button" data-ocleet="read">读取题目</button>
-        <button class="ocleet-btn" type="button" data-ocleet="read-code">读取当前代码</button>
-      </div>
+      <summary>题目与代码 · 读取详情</summary>
+
       <div class="ocleet-problem" data-ocleet="problem" hidden></div>
       <div class="ocleet-problem" data-ocleet="code-status" hidden></div>
     </details>
@@ -965,7 +923,7 @@
   function setStatus(state) {
     dot.classList.remove("ok", "err");
     if (state) dot.classList.add(state);
-    dot.title = state === "ok" ? "API key 可用" : state === "err" ? "key 未配置或无效" : "未检测";
+    dot.title = state === "ok" ? "Key 已配置；实际可用性以请求结果为准" : state === "err" ? "key 未配置或无效" : "未检测";
   }
 
   function scroll() {
@@ -1111,7 +1069,7 @@
     addMessage("assistant", codeStatus + (cfg.includeCode ? "" : "设置中已关闭发送代码，启用后才会附带到 AI 请求。"));
   }
 
-  const WELCOME = "选择问答模式后直接提问。展开「题目与代码」可分别读取内容；顶部 A− / A+ 调整阅读字号。";
+  const WELCOME = "选择问答模式后直接提问。上方可分别读取题目和代码、启动逐行调试；点击当前模型切换免费模型。";
 
   function resetMessages() {
     messagesEl.textContent = "";
@@ -1422,6 +1380,16 @@
     }
     if (!models.some((m) => m.id === cfg.model) && models.length) cfg.model = models[0].id;
     modelSelect.value = cfg.model;
+    renderModelInfo();
+  }
+
+  function renderModelInfo() {
+    const provider = PROVIDERS[currentProvider()];
+    const model = modelsForBase().find(m => m.id === cfg.model);
+    $("provider-tip").textContent = provider.tip;
+    $("model-tip").textContent = model?.tip || "";
+    $("key-link").href = provider.keyUrl;
+    $("model-shortcut").textContent = (model?.label || cfg.model) + " ▾";
   }
 
   async function verifyKey() {
@@ -1436,7 +1404,7 @@
     if (result.reason === "no-key") {
       if (!verifyKey._greeted) {
         verifyKey._greeted = true;
-        addMessage("assistant", "还没有配置 API key。点右上角 ⚙，把 OpenCode Go 的 key（`oc_sk_…`）填进去就能开始。");
+        addMessage("assistant", "请在右上角设置中选择智谱或 OpenRouter，并填写对应的 API Key。免费模型也需要 Key。");
       }
     } else if (result.reason === "http") {
       addMessage("assistant", `API key 校验失败（HTTP ${result.status}）：key 可能无效或已过期。`);
@@ -1459,6 +1427,7 @@
     settingsBox.hidden = !settingsBox.hidden;
     if (!settingsBox.hidden) $("settings-done").focus();
   });
+  $("model-shortcut").addEventListener("click", () => { settingsBox.hidden = false; modelSelect.focus(); });
   $("settings-done").addEventListener("click", () => { settingsBox.hidden = true; $("settings").focus(); });
   tabsEl.addEventListener("change", () => {
     cfg.mode = tabsEl.value;
@@ -1511,17 +1480,9 @@
     saveCfg();
     verifyKey();
   });
-  baseUrlInput.addEventListener("change", () => {
-    cfg.baseUrl = baseUrlInput.value.trim() || DEFAULTS.baseUrl;
-    saveCfg();
-    // 手动改地址后，供应商下拉与模型候选也跟着变
-    providerSelect.value = currentProvider();
-    fillModels(modelsForBase());
-    saveCfg();
-    verifyKey();
-  });
   modelSelect.addEventListener("change", () => {
     cfg.model = modelSelect.value;
+    renderModelInfo();
     saveCfg();
   });
   includeCodeEl.addEventListener("change", () => {
@@ -1547,12 +1508,6 @@
   });
 
   // Reflect stored config into the controls.
-  // 旧配置迁移：以前只有一个 apiKey，归到「当前供应商」名下后清掉（避免串给别家）
-  if (cfg.apiKey) {
-    if (!cfg.keys[currentProvider()]) cfg.keys[currentProvider()] = cfg.apiKey;
-    cfg.apiKey = "";
-    saveCfg();
-  }
   providerSelect.value = currentProvider();
   apiKeyInput.value = providerKey(currentProvider());
   baseUrlInput.value = cfg.baseUrl;
