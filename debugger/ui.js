@@ -58,6 +58,11 @@ function installPythonDebugger() {
     <div class="ocleet-debug-toolbar"><button class="ocleet-btn" data-debug="prev">上一步</button><button class="ocleet-btn" data-debug="next">下一步</button><label>所选行的执行记录<select data-debug="occurrence" aria-label="执行记录"></select></label></div>
     <div class="ocleet-debug-workspace"><div class="ocleet-debug-code" data-debug="code" aria-label="点击代码行查看执行状态"></div><div class="ocleet-debug-inspect"><div data-debug="position" class="ocleet-debug-status">尚未运行</div><dl class="ocleet-debug-vars" data-debug="vars"></dl><pre class="ocleet-debug-result" data-debug="result"></pre></div></div>`;
   panel.appendChild(view);
+  const visibility = createViewMotion(view, {
+    offset: 10, duration: 240,
+    beforeShow() { panelVisibility.finish(); panel.classList.add('ocleet-debug-open'); restorePanelPosition(); },
+    afterHide() { panel.classList.remove('ocleet-debug-open'); restorePanelPosition(); },
+  });
   const el = name => view.querySelector(`[data-debug="${name}"]`);
   let cases = [], selected = 0, snapshot = '', events = [], cursor = -1, activeRun = null;
   let pageKey = location.pathname, runVersion = 0, lineButtons = [];
@@ -226,10 +231,10 @@ function installPythonDebugger() {
   }
   $('open-debugger').addEventListener('click', () => {
     if (pageKey !== location.pathname) onRouteChange();
-    view.hidden = false; panel.classList.add('ocleet-debug-open'); restorePanelPosition();
+    visibility.setVisible(true);
     if (!snapshot) { loadSavedCases(); refresh(); }
   });
-  el('back').addEventListener('click', () => { cancel(); view.hidden = true; panel.classList.remove('ocleet-debug-open'); restorePanelPosition(); });
+  el('back').addEventListener('click', () => { cancel(); visibility.setVisible(false); });
   window.addEventListener('pagehide', cancel);
   invalidate();
   return { onRouteChange };

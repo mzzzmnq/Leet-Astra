@@ -2,7 +2,7 @@
 
 Leet Astra 是一个运行在 Tampermonkey（油猴）中的用户脚本。它在 LeetCode 题目页右下角加入 AI 对话面板，读取当前题目和编辑器代码，帮助你获得提示、理解代码和排查错误。
 
-**安装即可使用，无需部署后端。** AI 对话需要配置自己的模型服务 API Key，逐行调试可直接使用。当前版本为 **3.3.0**，内置智谱 GLM 和 OpenRouter 免费模型入口，可选对接本机 LeetNote 保存笔记。
+**安装即可使用，无需部署后端。** AI 对话需要配置自己的模型服务 API Key，逐行调试可直接使用。当前版本为 **3.3.1**，内置智谱 GLM 和 OpenRouter 免费模型入口，可选对接本机 LeetNote 保存笔记。
 
 ## 目录
 
@@ -75,7 +75,7 @@ Leet Astra 是一个运行在 Tampermonkey（油猴）中的用户脚本。它�
 3. 找到原有的 **openleet · 题目 AI 助手**（更新后为 **Leet Astra**），点击名称进入编辑页面。
 4. 全选旧代码，粘贴新代码，按 **Ctrl+S** 保存。
 5. 刷新已经打开的 LeetCode 题目页面。
-6. 如需确认版本，检查脚本头部的 `@version`，本版应为 `3.3.0`。
+6. 如需确认版本，检查脚本头部的 `@version`，本版应为 `3.3.1`。
 
 只替换同一脚本的源码，配置和 API Key 通常会保留。不要为了更新先删除原脚本；删除时清理脚本数据可能丢失设置。也不要同时启用多个 Leet Astra 副本。
 
@@ -357,7 +357,7 @@ Leet Astra/
 └── README.md             # 安装、配置与开发说明
 ```
 
-安装发布脚本无需构建。开发时，`debugger/` 保存 Python 执行引擎、用例读取、Worker 与界面源码，`ui/theme.js` 保存主题联动逻辑；修改后运行 `node scripts/build-debugger.cjs`，将源码嵌入 `openleet.user.js`。请同时提交源码和生成的脚本。无需安装 npm 依赖，测试使用 Node.js 内置模块；Python 引擎测试需要本机 Python 3，可通过 `PYTHON` 环境变量指定可执行文件。
+安装发布脚本无需构建。开发时，`debugger/` 保存 Python 执行引擎、用例读取、Worker 与界面源码，`ui/theme.js` 保存主题联动逻辑，`ui/motion.js` 保存窗口动画逻辑；修改后运行 `node scripts/build-debugger.cjs`，将源码嵌入 `openleet.user.js`。请同时提交源码和生成的脚本。无需安装 npm 依赖，测试使用 Node.js 内置模块；Python 引擎测试需要本机 Python 3，可通过 `PYTHON` 环境变量指定可执行文件。
 
 `scripts/` 包含 Windows LeetNote 启动器的安装、协议处理和公共实现。启动器测试需要 Windows PowerShell 环境；不安装协议，也不启动真实服务。
 
@@ -375,6 +375,8 @@ node --test tests/*.test.cjs
 # 检查补丁空白错误（Git 工作区）
 git diff --check
 ```
+
+浏览器界面回归使用 Playwright，运行 `node tests/browser-ui.cjs`。可通过 `PLAYWRIGHT_MODULE` 指定模块路径、`BROWSER_CHANNEL` 指定本机浏览器（如 `msedge`）。检查覆盖旧样式后加载、动画中间帧、快速开关、动画中拖动、子面板和减少动态效果。
 
 读取测试覆盖重复修改、缩短与清空代码，模型替换，隐藏或已销毁实例，最近焦点选择，只读对比编辑器，单模型兼容路径，DOM 片段标记和隔离，以及发送消息时的最新代码上下文。
 
@@ -410,6 +412,12 @@ git diff --check
 - 模型列表采用核验时的固定候选，服务商后续调整免费额度或下线模型时需要更新脚本。
 
 ## 版本记录
+
+### 3.3.1
+
+- 修复旧面板根样式覆盖主题配色导致的深底、浅色控件与浅色文字混用。
+- 窗口、设置和调试区使用直接触发的滑入淡入、滑出淡出动画，兼容快速反复开关。
+- 拖动前完成窗口动画，保持鼠标与窗口位置一致；继续遵循系统减少动态效果设置。
 
 ### 3.3.0
 

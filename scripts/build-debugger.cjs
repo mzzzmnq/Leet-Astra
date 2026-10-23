@@ -10,6 +10,7 @@ const block = [
   read('debugger/worker.js'),
   read('debugger/ui.js'),
   read('ui/theme.js'),
+  read('ui/motion.js'),
   '  installThemeSync(panel, launcher);',
   '  const pythonDebugger = installPythonDebugger();',
   '  // END GENERATED DEBUGGER',

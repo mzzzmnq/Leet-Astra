@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Leet Astra
 // @namespace    opencode-leet
-// @version      3.3.0
+// @version      3.3.1
 // @description  在 LeetCode 题目页嵌入 AI 对话面板：分步提示 / 讲代码+复杂度 / Debug 报错 / 代码批注 / Python 知识点。纯前端，直接用你自己的 API key。
 // @author       opencode-leet
 // @match        https://leetcode.com/problems/*
@@ -612,12 +612,13 @@
 .ocleet-panel{position:fixed;right:12px;bottom:78px;z-index:2147483000;width:460px;max-width:calc(100% - 24px);height:min(82vh,820px);display:flex;flex-direction:column;
   background:var(--ocleet-surface);color:var(--ocleet-text);border:1px solid var(--ocleet-line);border-radius:16px;overflow:hidden;
   box-shadow:var(--ocleet-shadow);font:13px/1.6 -apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif}
+.ocleet-panel[data-ocleet-theme]{background:var(--ocleet-surface);color:var(--ocleet-text);border-color:var(--ocleet-line);box-shadow:var(--ocleet-shadow)}
 .ocleet-panel[hidden]{display:none}
 .ocleet-panel,.ocleet-panel *{box-sizing:border-box}
 .ocleet-panel> *:not(.ocleet-messages){flex-shrink:0}
 .ocleet-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--ocleet-line);background:var(--ocleet-raised);cursor:grab;touch-action:none;user-select:none}
 .ocleet-head.ocleet-dragging{cursor:grabbing}
-.ocleet-brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px}
+.ocleet-brand{color:var(--ocleet-text);display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px}
 .ocleet-dot{width:8px;height:8px;border-radius:50%;background:#8b90a3}
 .ocleet-dot.ok{background:#37d67a;box-shadow:0 0 0 3px rgba(55,214,122,.18)}
 .ocleet-dot.err{background:#ff5f6d;box-shadow:0 0 0 3px rgba(255,95,109,.18)}
@@ -650,7 +651,7 @@
 .ocleet-messages>*{flex-shrink:0}
 .ocleet-msg{max-width:100%;padding:9px 11px;border-radius:12px;white-space:normal;word-break:break-word}
 .ocleet-msg.user{align-self:flex-end;background:linear-gradient(135deg,#5b7cfa,#7b5cf5);color:#fff;border-bottom-right-radius:4px}
-.ocleet-msg.assistant{align-self:flex-start;background:var(--ocleet-raised);border:1px solid var(--ocleet-line);border-bottom-left-radius:4px}
+.ocleet-msg.assistant{color:var(--ocleet-text);align-self:flex-start;background:var(--ocleet-raised);border:1px solid var(--ocleet-line);border-bottom-left-radius:4px}
 .ocleet-msg.error{align-self:flex-start;background:var(--ocleet-error-bg);border:1px solid var(--ocleet-error-line);color:var(--ocleet-error)}
 .ocleet-msg p{margin:0 0 7px}.ocleet-msg p:last-child{margin-bottom:0}
 .ocleet-msg ul{margin:4px 0 7px;padding-left:20px}
@@ -691,26 +692,20 @@
 @keyframes ocleet-blink{0%,50%{opacity:1}50.01%,100%{opacity:0}}
 @media(max-height:600px){.ocleet-panel{height:calc(100dvh - 24px);bottom:12px}.ocleet-composer{padding:8px 12px}.ocleet-mode-row{padding-top:6px}}
 
-/* Motion stays on paint/compositing properties, so dragging and resizing remain direct. */
-.ocleet-panel{transition:opacity .2s ease,background-color .2s ease,color .2s ease,border-color .2s ease,box-shadow .2s ease,display .2s allow-discrete}
-.ocleet-panel[hidden]{opacity:0;pointer-events:none}
+/* Visibility uses Web Animations; theme and button transitions stay in CSS. */
+.ocleet-panel[data-ocleet-theme],.ocleet-head,.ocleet-composer,.ocleet-msg.assistant,.ocleet-pre{transition:background-color .18s ease,color .18s ease,border-color .18s ease,box-shadow .18s ease}
 .ocleet-panel :is(button,input,textarea,select,summary){transition:background-color .16s ease,color .16s ease,border-color .16s ease,box-shadow .16s ease}
 .ocleet-launcher,.ocleet-panel .ocleet-btn,.ocleet-panel .ocleet-icon{transition:transform .16s ease,background-color .16s ease,color .16s ease,border-color .16s ease,box-shadow .16s ease,filter .16s ease}
 .ocleet-launcher:active,.ocleet-btn:active:not(:disabled),.ocleet-icon:active:not(:disabled){transform:scale(.97)}
 .ocleet-panel :is(input,textarea,select){accent-color:#6277ed}
 .ocleet-panel ::placeholder{color:var(--ocleet-subtle);opacity:1}
-.ocleet-panel :is(.ocleet-settings,.ocleet-note-menu,.ocleet-debugger){transition:opacity .18s ease,translate .18s ease,background-color .2s ease,display .18s allow-discrete}
-.ocleet-settings[hidden],.ocleet-debugger[hidden]{opacity:0;translate:0 6px;pointer-events:none}
-.ocleet-msg{animation:ocleet-message-in .2s ease-out}
+.ocleet-panel :is(.ocleet-settings,.ocleet-note-menu,.ocleet-debugger){transition:background-color .18s ease,color .18s ease,border-color .18s ease}
+.ocleet-msg{animation:ocleet-message-in .24s ease-out}
+.ocleet-note-tools[open] .ocleet-note-menu{animation:ocleet-message-in .2s ease-out}
 .ocleet-panel :is(.ocleet-messages,.ocleet-settings,.ocleet-debug-code,.ocleet-debug-inspect){scrollbar-width:thin;scrollbar-color:var(--ocleet-line-strong) transparent}
 .ocleet-panel a{color:var(--ocleet-accent)}
 .ocleet-msg.user a{color:inherit}
-@starting-style{
-  .ocleet-panel:not([hidden]){opacity:0}
-  .ocleet-panel .ocleet-settings:not([hidden]),.ocleet-panel .ocleet-debugger:not([hidden]){opacity:0;translate:0 6px}
-  .ocleet-note-tools[open] .ocleet-note-menu{opacity:0;translate:0 4px}
-}
-@keyframes ocleet-message-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+@keyframes ocleet-message-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @media(prefers-reduced-motion:reduce){
   .ocleet-launcher,.ocleet-panel,.ocleet-panel *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
   .ocleet-launcher:hover,.ocleet-launcher:active,.ocleet-panel button:active{transform:none!important}
@@ -823,7 +818,7 @@
   $("font-increase").addEventListener("click", () => applyFontSize(cfg.fontSize + 1, true));
 
   /* -------------------------------------------------------- panel position */
-  function setupPanelDrag(panel, handle) {
+  function setupPanelDrag(panel, handle, finishMotion = () => {}) {
     let position = store.get("panel-position", null);
     if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) position = null;
     let drag = null;
@@ -848,6 +843,7 @@
     }
     handle.addEventListener("pointerdown", event => {
       if (event.button !== 0 || event.isPrimary === false || event.target.closest("button")) return;
+      finishMotion();
       const rect = panel.getBoundingClientRect();
       drag = { id: event.pointerId, x: event.clientX - rect.left, y: event.clientY - rect.top };
       handle.setPointerCapture(event.pointerId);
@@ -870,7 +866,9 @@
     window.addEventListener("blur", () => finish());
     return restore;
   }
-  const restorePanelPosition = setupPanelDrag(panel, $("drag-handle"));
+  const restorePanelPosition = setupPanelDrag(panel, $("drag-handle"), () => panelVisibility.finish());
+  const panelVisibility = createViewMotion(panel, { beforeShow: restorePanelPosition });
+  const settingsVisibility = createViewMotion(settingsBox, { offset: 10, duration: 240 });
 
   /* ---------------------------------------------------- conversation state */
   const MAX_SAVED_MESSAGES = 200;
@@ -1357,7 +1355,7 @@
     const token = (cfg.leetnoteToken || "").trim();
     if (!token) {
       addMessage("assistant", "还没配置 LeetNote 令牌。点右上角 ⚙ 填入（在 LeetNote 里用 `go run ./cmd/token -user <用户名>` 生成）。");
-      settingsBox.hidden = false;
+      settingsVisibility.setVisible(true);
       return;
     }
 
@@ -1484,20 +1482,19 @@
 
   launcher.addEventListener("click", () => {
     syncConversation();
-    panel.hidden = !panel.hidden;
-    restorePanelPosition();
-    if (!panel.hidden && cfg.autoRead && cfg.mode !== "knowledge") {
+    panelVisibility.toggle();
+    if (panelVisibility.isVisible() && cfg.autoRead && cfg.mode !== "knowledge") {
       const problem = readProblem();
       renderProblemChip(problem);
     }
   });
-  $("close").addEventListener("click", () => (panel.hidden = true));
+  $("close").addEventListener("click", () => panelVisibility.setVisible(false));
   $("settings").addEventListener("click", () => {
-    settingsBox.hidden = !settingsBox.hidden;
-    if (!settingsBox.hidden) $("settings-done").focus();
+    settingsVisibility.toggle();
+    if (settingsVisibility.isVisible()) $("settings-done").focus();
   });
-  $("model-shortcut").addEventListener("click", () => { settingsBox.hidden = false; modelSelect.focus(); });
-  $("settings-done").addEventListener("click", () => { settingsBox.hidden = true; $("settings").focus(); });
+  $("model-shortcut").addEventListener("click", () => { settingsVisibility.setVisible(true); modelSelect.focus(); });
+  $("settings-done").addEventListener("click", () => { settingsVisibility.setVisible(false); $("settings").focus(); });
   tabsEl.addEventListener("change", () => {
     cfg.mode = tabsEl.value;
     saveCfg();
@@ -1505,7 +1502,7 @@
   });
   panel.addEventListener("keydown", event => {
     if (event.key === "Escape") {
-      if (!settingsBox.hidden) { settingsBox.hidden = true; $("settings").focus(); }
+      if (settingsVisibility.isVisible()) { settingsVisibility.setVisible(false); $("settings").focus(); }
       $("note-tools").open = false;
     }
   });
@@ -1799,6 +1796,11 @@ function installPythonDebugger() {
     <div class="ocleet-debug-toolbar"><button class="ocleet-btn" data-debug="prev">上一步</button><button class="ocleet-btn" data-debug="next">下一步</button><label>所选行的执行记录<select data-debug="occurrence" aria-label="执行记录"></select></label></div>
     <div class="ocleet-debug-workspace"><div class="ocleet-debug-code" data-debug="code" aria-label="点击代码行查看执行状态"></div><div class="ocleet-debug-inspect"><div data-debug="position" class="ocleet-debug-status">尚未运行</div><dl class="ocleet-debug-vars" data-debug="vars"></dl><pre class="ocleet-debug-result" data-debug="result"></pre></div></div>`;
   panel.appendChild(view);
+  const visibility = createViewMotion(view, {
+    offset: 10, duration: 240,
+    beforeShow() { panelVisibility.finish(); panel.classList.add('ocleet-debug-open'); restorePanelPosition(); },
+    afterHide() { panel.classList.remove('ocleet-debug-open'); restorePanelPosition(); },
+  });
   const el = name => view.querySelector(`[data-debug="${name}"]`);
   let cases = [], selected = 0, snapshot = '', events = [], cursor = -1, activeRun = null;
   let pageKey = location.pathname, runVersion = 0, lineButtons = [];
@@ -1967,10 +1969,10 @@ function installPythonDebugger() {
   }
   $('open-debugger').addEventListener('click', () => {
     if (pageKey !== location.pathname) onRouteChange();
-    view.hidden = false; panel.classList.add('ocleet-debug-open'); restorePanelPosition();
+    visibility.setVisible(true);
     if (!snapshot) { loadSavedCases(); refresh(); }
   });
-  el('back').addEventListener('click', () => { cancel(); view.hidden = true; panel.classList.remove('ocleet-debug-open'); restorePanelPosition(); });
+  el('back').addEventListener('click', () => { cancel(); visibility.setVisible(false); });
   window.addEventListener('pagehide', cancel);
   invalidate();
   return { onRouteChange };
@@ -2045,6 +2047,74 @@ function installThemeSync(panel, launcher) {
     window.removeEventListener('pagehide', pause);
     window.removeEventListener('pageshow', resume);
   };
+}
+
+// Keep the intended visibility separate from hidden while an exit animation runs.
+function createViewMotion(element, { offset = 14, duration = 280, beforeShow = () => {}, afterHide = () => {} } = {}) {
+  let visible = !element.hidden;
+  let animation = null;
+
+  function syncInteraction() {
+    element.inert = !visible;
+    element.setAttribute('aria-hidden', String(!visible));
+  }
+  function settle() {
+    element.hidden = !visible;
+    syncInteraction();
+    if (!visible) afterHide();
+  }
+  function cancelAnimation() {
+    const previous = animation;
+    animation = null;
+    if (previous) previous.cancel();
+  }
+  function finish() {
+    if (!animation) return;
+    cancelAnimation();
+    settle();
+  }
+  function setVisible(next) {
+    next = Boolean(next);
+    if (next === visible) return visible;
+
+    // Capture an interrupted frame before cancelling its fill effect.
+    const current = animation || !element.hidden ? window.getComputedStyle(element) : null;
+    const start = current ? { opacity: current.opacity, transform: current.transform } : null;
+    cancelAnimation();
+    visible = next;
+    syncInteraction();
+    if (visible) {
+      element.hidden = false;
+      beforeShow();
+    }
+
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion || typeof element.animate !== 'function' || duration <= 0) {
+      settle();
+      return visible;
+    }
+
+    const resting = { opacity: '1', transform: 'translateY(0px)' };
+    const displaced = { opacity: '0', transform: `translateY(${offset}px)` };
+    const running = element.animate([
+      start || (visible ? displaced : resting),
+      visible ? resting : displaced,
+    ], {
+      duration: visible ? duration : Math.min(duration, 200),
+      easing: 'cubic-bezier(.22, 1, .36, 1)',
+      fill: 'both',
+    });
+    animation = running;
+    running.onfinish = () => {
+      if (animation !== running) return;
+      cancelAnimation();
+      settle();
+    };
+    return visible;
+  }
+
+  syncInteraction();
+  return { setVisible, toggle: () => setVisible(!visible), isVisible: () => visible, finish };
 }
 
   installThemeSync(panel, launcher);

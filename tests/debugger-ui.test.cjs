@@ -25,8 +25,9 @@ function harness(saved = []) {
     store: { get: () => saved, set: (key, value) => { persisted = value; } },
     readCode: () => ({ code: 'def solve():\n    return 1', lang: 'python' }), readDebugTestCases: () => [],
     createPythonDebugRun: value => { payload = value; return { promise: Promise.resolve(result), cancel() {} }; },
-    $: () => open, restorePanelPosition() {}, window: { addEventListener() {} },
+    $: () => open, restorePanelPosition() {}, panelVisibility: { finish() {} }, window: { addEventListener() {}, matchMedia: () => ({ matches: true }) },
   });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../ui/motion.js'), 'utf8'), context);
   vm.runInContext(source, context);
   context.installPythonDebugger(); open.emit('click');
   return { context, controls: panel.children[0].controls, saved: () => persisted, payload: () => payload, result: value => { result = value; } };
