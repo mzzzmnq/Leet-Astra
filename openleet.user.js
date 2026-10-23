@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Leet Astra
 // @namespace    opencode-leet
-// @version      3.1.0
+// @version      3.2.0
 // @description  在 LeetCode 题目页嵌入 AI 对话面板：分步提示 / 讲代码+复杂度 / Debug 报错 / 代码批注 / Python 知识点。纯前端，直接用你自己的 API key。
 // @author       opencode-leet
 // @match        https://leetcode.com/problems/*
@@ -476,7 +476,7 @@
    * partial `responseText` in `onprogress`; otherwise the whole answer lands at
    * `onload` (still parsed and rendered).
    */
-  function directChat(payload, onDelta, onReasoning) {
+  function directChat(payload, onDelta, onReasoning, control = {}) {
     return new Promise((resolve, reject) => {
       if (!hasGM()) {
         reject(new Error("没有 GM_xmlhttpRequest：请用 Tampermonkey 安装本脚本（普通网页脚本无法绕过目标服务的 CORS）。"));
@@ -492,13 +492,20 @@
       let buffer = "";
       let received = false;
       let settled = false;
+      let transport;
       const settle = (fn, arg) => {
         if (settled) return;
         settled = true;
         fn(arg);
       };
 
+      control.cancel = () => {
+        if (settled) return;
+        settle(reject, Object.assign(new Error("已停止回答"), { name: "AbortError" }));
+        try { transport?.abort?.(); } catch { /* The manager may already have closed it. */ }
+      };
       const consume = (text) => {
+        if (settled) return;
         buffer += text;
         let split;
         while ((split = buffer.indexOf("\n\n")) >= 0) {
@@ -528,7 +535,7 @@
         }
       };
 
-      GM_xmlhttpRequest({
+      transport = GM_xmlhttpRequest({
         method: "POST",
         url: chatUrl(),
         headers: {
@@ -539,12 +546,14 @@
         data: JSON.stringify({ ...payload, stream: true }),
         timeout: 180_000,
         onprogress: (r) => {
+          if (settled) return;
           if (typeof r.responseText === "string" && r.responseText.length > lastLen) {
             consume(r.responseText.slice(lastLen));
             lastLen = r.responseText.length;
           }
         },
         onload: (r) => {
+          if (settled) return;
           if (r.status < 200 || r.status >= 300) {
             settle(reject, Object.assign(new Error(errorText(r.status, r.responseText)), { ocleetHttp: true }));
             return;
@@ -729,6 +738,7 @@
         </div></details>
         <div class="ocleet-btns">
           <button class="ocleet-btn" type="button" data-ocleet="clear">清空</button>
+          <button class="ocleet-btn" type="button" data-ocleet="stop-reply" hidden>停止回答</button>
           <button class="ocleet-btn primary" type="button" data-ocleet="send">发送</button>
         </div>
       </div>
@@ -739,6 +749,7 @@
   const messagesEl = $("messages");
   const inputEl = $("input");
   const sendBtn = $("send");
+  const stopReplyBtn = $("stop-reply");
   const dot = $("dot");
   const problemEl = $("problem");
   const codeStatusEl = $("code-status");
@@ -872,9 +883,23 @@
     if (saveTimer) saveConversation();
   }
 
+  function stopReply(reason = "已停止回答，已保留收到的内容。") {
+    const request = activeRequest;
+    if (!request) return;
+    activeRequest = null;
+    request.reply.status = "interrupted";
+    request.reply.error = reason;
+    request.bubble.done();
+    request.control.cancel?.();
+    setBusy(false);
+    saveConversation();
+    chatStatusEl.textContent = reason + " " + chatStatusEl.textContent;
+  }
+
   function syncConversation(force = false) {
     const key = conversationKey();
     if (!force && conversation && conversation.key === key) return false;
+    stopReply("题目已切换，已停止上一题的回答。");
     if (saveTimer) saveConversation();
     activeRequest = null;
     setBusy(false);
@@ -898,6 +923,7 @@
 
   function clearConversation() {
     syncConversation();
+    stopReply();
     activeRequest = null;
     setBusy(false);
     history = [];
@@ -1099,6 +1125,7 @@
   function setBusy(value) {
     busy = value;
     sendBtn.disabled = value;
+    stopReplyBtn.hidden = !value;
     sendBtn.textContent = value ? "生成中…" : "发送";
   }
 
@@ -1118,7 +1145,7 @@
     const bubble = addAssistant();
     const reply = { role: "assistant", content: "", status: "streaming" };
     history.push(reply);
-    const request = { conversation };
+    const request = { conversation, reply, bubble, control: {} };
     activeRequest = request;
     const isCurrent = () => activeRequest === request && conversation === request.conversation && conversationKey() === conversation.key;
     saveConversation();
@@ -1145,7 +1172,7 @@
         scheduleConversationSave();
       }, (delta) => {
         if (isCurrent()) bubble.onReasoning(delta);
-      });
+      }, request.control);
       if (!isCurrent()) return;
       reply.status = "complete";
       bubble.done();
@@ -1441,6 +1468,7 @@
     }
   });
   $("send").addEventListener("click", onSend);
+  stopReplyBtn.addEventListener("click", () => { syncConversation(); stopReply(); });
   $("import").addEventListener("click", importToLeetNote);
   $("start-leetnote").addEventListener("click", startLeetNote);
   $("clear").title = "清除本题已保存的对话和草稿";
@@ -1460,7 +1488,7 @@
     conversation.draft = draft;
     scheduleConversationSave();
   });
-  window.addEventListener("pagehide", flushConversationSave);
+  window.addEventListener("pagehide", () => { stopReply("页面已关闭，回答已停止。"); flushConversationSave(); });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) flushConversationSave();
   });
@@ -1530,7 +1558,7 @@
   }, 1200);
 
   // BEGIN GENERATED DEBUGGER
-  const PYTHON_TRACE_SOURCE = "\"\"\"Small, bounded Python tracer used inside the disposable Pyodide worker.\"\"\"\nimport ast\nimport contextlib\nimport inspect\nimport io\nimport itertools\nimport sys\nimport time\nimport tokenize\nimport typing\n\n\nclass ListNode:\n    def __init__(self, val=0, next=None):\n        self.val, self.next = val, next\n\n\nclass TreeNode:\n    def __init__(self, val=0, left=None, right=None):\n        self.val, self.left, self.right = val, left, right\n\n\nclass _Limit(BaseException):\n    pass\n\n\ndef _snapshot(value, depth=0, seen=None):\n    \"\"\"Avoid user-defined repr/iteration/property hooks in debugger snapshots.\"\"\"\n    seen = set() if seen is None else seen\n    kind = type(value)\n    if kind in (type(None), bool, int, float, str):\n        if kind is int and value.bit_length() > 1000:\n            return '<large int>'\n        return repr(value[:200] + ('…' if len(value) > 200 else '')) if kind is str else repr(value)\n    if id(value) in seen:\n        return '<cycle>'\n    if depth >= 3:\n        return '…'\n    seen = seen | {id(value)}\n    render = lambda item: _snapshot(item, depth + 1, seen)\n    if kind in (list, tuple):\n        left, right = ('[', ']') if kind is list else ('(', ')')\n        return left + ', '.join(render(item) for item in value[:20]) + (', …' if len(value) > 20 else '') + right\n    if kind is dict:\n        items = list(itertools.islice(value.items(), 20))\n        return '{' + ', '.join(render(k) + ': ' + render(v) for k, v in items) + (', …' if len(value) > 20 else '') + '}'\n    if kind in (ListNode, TreeNode):\n        fields = ('val', 'next') if kind is ListNode else ('val', 'left', 'right')\n        data = object.__getattribute__(value, '__dict__')\n        return kind.__name__ + '(' + ', '.join(key + '=' + render(data.get(key)) for key in fields) + ')'\n    return '<' + kind.__name__ + '>'\n\n\ndef _inputs(text):\n    if not text.strip():\n        return [], {}\n\n    class Constants(ast.NodeTransformer):\n        def visit_Name(self, node):\n            if node.id in ('true', 'false', 'null'):\n                return ast.copy_location(ast.Constant({'true': True, 'false': False, 'null': None}[node.id]), node)\n            return node\n\n    def literal(node):\n        return ast.literal_eval(Constants().visit(node))\n\n    # NEWLINE ends a logical argument row; NL keeps bracketed values together.\n    rows, tokens = [], []\n    for token in tokenize.generate_tokens(io.StringIO(text).readline):\n        if token.type in (tokenize.INDENT, tokenize.DEDENT, tokenize.ENDMARKER):\n            continue\n        if token.type == tokenize.NEWLINE:\n            rows.append(tokenize.untokenize(tokens).strip())\n            tokens = []\n        elif token.type != tokenize.COMMENT:\n            tokens.append((token.type, token.string))\n    if tokens:\n        rows.append(tokenize.untokenize(tokens).strip())\n    args, kwargs = [], {}\n    for row in rows:\n        if not row:\n            continue\n        call = ast.parse('_input(' + row + ')', mode='eval').body\n        for node in call.args:\n            args.append(literal(node))\n        for item in call.keywords:\n            if item.arg is None or item.arg in kwargs:\n                raise ValueError('Input names must be unique; ** expansion is unsupported')\n            kwargs[item.arg] = literal(item.value)\n    return args, kwargs\n\n\ndef _convert(value, parameter):\n    annotation = parameter.annotation\n    name = annotation if isinstance(annotation, str) else str(annotation)\n    if type(value) is not list:\n        return value\n    if 'ListNode' in name:\n        head = None\n        for item in reversed(value):\n            head = ListNode(item, head)\n        return head\n    if 'TreeNode' in name:\n        if not value or value[0] is None:\n            return None\n        root = TreeNode(value[0])\n        queue, index = [root], 1\n        for parent in queue:\n            for field in ('left', 'right'):\n                if index >= len(value):\n                    return root\n                item = value[index]\n                index += 1\n                if item is not None:\n                    child = TreeNode(item)\n                    setattr(parent, field, child)\n                    queue.append(child)\n        if index < len(value):\n            raise ValueError('Tree input has unreachable nodes')\n        return root\n    return value\n\n\ndef trace_code(code: str, case_text: str, entry: str = ''):\n    events, frame_states, loops = [], {}, {}\n    result = {'events': events, 'result': '', 'stdout': '', 'error': '', 'limited': False, 'entry': entry}\n    started = time.monotonic()\n\n    class Output(io.StringIO):\n        def write(self, text):\n            remaining = 4000 - self.tell()\n            super().write(text[:max(0, remaining)])\n            if len(text) > remaining:\n                raise _Limit('Output limit (4000 characters) reached')\n            return len(text)\n\n    output = Output()\n\n    class Instrument(ast.NodeTransformer):\n        def __init__(self):\n            self.parents = []\n            self.owner = ('<module>', 1)\n\n        def scope(self, node):\n            previous = self.parents, self.owner\n            self.parents = []\n            self.owner = (node.name, min([node.lineno] + [item.lineno for item in node.decorator_list]))\n            self.generic_visit(node)\n            self.parents, self.owner = previous\n            return node\n\n        visit_FunctionDef = scope\n        visit_AsyncFunctionDef = scope\n        visit_ClassDef = scope\n\n        def instrument(self, node):\n            line = node.lineno\n            loops[line] = (node.body[-1].end_lineno, tuple(self.parents), self.owner)\n            self.parents.append(line)\n            self.generic_visit(node)\n            self.parents.pop()\n            injected = ast.Expr(value=ast.Call(func=ast.Name(id='_openleet_tick', ctx=ast.Load()), args=[ast.Constant(line)], keywords=[]))\n            for child in ast.walk(injected):\n                child.lineno = child.end_lineno = 0\n                child.col_offset = child.end_col_offset = 0\n            node.body.insert(0, injected)\n            return node\n\n        visit_For = instrument\n        visit_While = instrument\n\n    def tick(line):\n        frame = sys._getframe(1)\n        state = frame_states.setdefault(id(frame), {})\n        parents = loops[line][1]\n        signature = tuple(state.get(parent, (None, 0))[1] for parent in parents)\n        old_signature, count = state.get(line, (None, 0))\n        state[line] = (signature, count + 1 if signature == old_signature else 1)\n        for child, (_, ancestors, _) in loops.items():\n            if line in ancestors:\n                state.pop(child, None)\n\n    def trace(frame, event, arg):\n        if frame.f_code.co_filename != '<openleet-user>':\n            return trace\n        if time.monotonic() - started > 3:\n            raise _Limit('Execution time limit (3 seconds) reached')\n        if event not in ('line', 'return', 'exception') or frame.f_lineno == 0:\n            return trace\n        if len(events) >= 2000:\n            raise _Limit('Trace limit (2000 events) reached')\n        state = frame_states.setdefault(id(frame), {})\n        depth, parent = 0, frame.f_back\n        while parent:\n            if parent.f_code.co_filename == '<openleet-user>':\n                depth += 1\n            parent = parent.f_back\n        snapshot = {key: _snapshot(value) for key, value in itertools.islice(frame.f_locals.items(), 100)\n                    if not key.startswith('__') and key not in namespace_base}\n        # iteration counts bodies entered so far in this activation. A first\n        # condition/iterator check is 0; body snapshots start at 1.\n        active = [{'line': line, 'iteration': state.get(line, (None, 0))[1]}\n                  for line, (end, _, owner) in loops.items() if line <= frame.f_lineno <= end\n                  and owner == (frame.f_code.co_name, frame.f_code.co_firstlineno)]\n        item = {'line': frame.f_lineno, 'event': 'before' if event == 'line' else event,\n                'locals': snapshot, 'loops': active, 'function': frame.f_code.co_name, 'depth': depth}\n        if event == 'return':\n            item['returnValue'] = _snapshot(arg)\n            frame_states.pop(id(frame), None)\n        elif event == 'exception':\n            item['exception'] = arg[0].__name__ + ': ' + str(arg[1])[:500]\n        events.append(item)\n        return trace\n\n    namespace_base = {name: getattr(typing, name) for name in typing.__all__}\n    namespace_base.update({'ListNode': ListNode, 'TreeNode': TreeNode, '_openleet_tick': tick})\n    namespace = dict(namespace_base)\n    old_trace = sys.gettrace()\n    try:\n        args, kwargs = _inputs(case_text)\n        tree = Instrument().visit(ast.parse(code, filename='<openleet-user>'))\n        compiled = compile(ast.fix_missing_locations(tree), '<openleet-user>', 'exec')\n        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):\n            sys.settrace(trace)\n            exec(compiled, namespace)\n            target = None\n            solution = namespace.get('Solution')\n            candidates = {}\n            if inspect.isclass(solution):\n                instance = solution()\n                candidates.update({name: getattr(instance, name) for name, value in vars(solution).items()\n                                   if not name.startswith('_') and inspect.isfunction(value)})\n            else:\n                candidates.update({name: value for name, value in namespace.items()\n                                   if not name.startswith('_') and inspect.isfunction(value)\n                                   and value.__code__.co_filename == '<openleet-user>'})\n            selected = entry.removeprefix('Solution.')\n            if selected:\n                if selected not in candidates:\n                    raise ValueError('Entry not found: ' + entry)\n                target = candidates[selected]\n            elif len(candidates) == 1:\n                selected, target = next(iter(candidates.items()))\n            elif candidates:\n                raise ValueError('Choose an entry: ' + ', '.join(candidates))\n            elif args or kwargs:\n                raise ValueError('No callable entry found for the supplied inputs')\n            if target:\n                result['entry'] = selected\n                signature = inspect.signature(target)\n                bound = signature.bind(*args, **kwargs)\n                for name, value in bound.arguments.items():\n                    bound.arguments[name] = _convert(value, signature.parameters[name])\n                result['result'] = _snapshot(target(*bound.args, **bound.kwargs))\n    except _Limit as error:\n        result['limited'] = True\n        result['error'] = str(error)\n    except BaseException as error:\n        result['error'] = type(error).__name__ + ': ' + str(error)[:1000]\n    finally:\n        sys.settrace(old_trace)\n        result['stdout'] = output.getvalue()\n    return result\n";
+  const PYTHON_TRACE_SOURCE = "\"\"\"Small, bounded Python tracer used inside the disposable Pyodide worker.\"\"\"\nimport ast\nimport contextlib\nimport inspect\nimport io\nimport itertools\nimport sys\nimport time\nimport tokenize\nimport typing\n\n\nclass ListNode:\n    def __init__(self, val=0, next=None):\n        self.val, self.next = val, next\n\n\nclass TreeNode:\n    def __init__(self, val=0, left=None, right=None):\n        self.val, self.left, self.right = val, left, right\n\n\nclass _Limit(BaseException):\n    pass\n\n\ndef _snapshot(value, depth=0, seen=None):\n    \"\"\"Avoid user-defined repr/iteration/property hooks in debugger snapshots.\"\"\"\n    seen = set() if seen is None else seen\n    kind = type(value)\n    if kind in (type(None), bool, int, float, str):\n        if kind is int and value.bit_length() > 1000:\n            return '<large int>'\n        return repr(value[:200] + ('…' if len(value) > 200 else '')) if kind is str else repr(value)\n    if id(value) in seen:\n        return '<cycle>'\n    if depth >= 3:\n        return '…'\n    seen = seen | {id(value)}\n    render = lambda item: _snapshot(item, depth + 1, seen)\n    if kind in (list, tuple):\n        left, right = ('[', ']') if kind is list else ('(', ')')\n        return left + ', '.join(render(item) for item in value[:20]) + (', …' if len(value) > 20 else '') + right\n    if kind is dict:\n        items = list(itertools.islice(value.items(), 20))\n        return '{' + ', '.join(render(k) + ': ' + render(v) for k, v in items) + (', …' if len(value) > 20 else '') + '}'\n    if kind in (ListNode, TreeNode):\n        fields = ('val', 'next') if kind is ListNode else ('val', 'left', 'right')\n        data = object.__getattribute__(value, '__dict__')\n        return kind.__name__ + '(' + ', '.join(key + '=' + render(data.get(key)) for key in fields) + ')'\n    return '<' + kind.__name__ + '>'\n\n\ndef _inputs(text):\n    if not text.strip():\n        return [], {}\n\n    class Constants(ast.NodeTransformer):\n        def visit_Name(self, node):\n            if node.id in ('true', 'false', 'null'):\n                return ast.copy_location(ast.Constant({'true': True, 'false': False, 'null': None}[node.id]), node)\n            return node\n\n    def literal(node):\n        return ast.literal_eval(Constants().visit(node))\n\n    # NEWLINE ends a logical argument row; NL keeps bracketed values together.\n    rows, tokens = [], []\n    for token in tokenize.generate_tokens(io.StringIO(text).readline):\n        if token.type in (tokenize.INDENT, tokenize.DEDENT, tokenize.ENDMARKER):\n            continue\n        if token.type == tokenize.NEWLINE:\n            rows.append(tokenize.untokenize(tokens).strip())\n            tokens = []\n        elif token.type != tokenize.COMMENT:\n            tokens.append((token.type, token.string))\n    if tokens:\n        rows.append(tokenize.untokenize(tokens).strip())\n    args, kwargs = [], {}\n    for row in rows:\n        if not row:\n            continue\n        call = ast.parse('_input(' + row + ')', mode='eval').body\n        for node in call.args:\n            args.append(literal(node))\n        for item in call.keywords:\n            if item.arg is None or item.arg in kwargs:\n                raise ValueError('Input names must be unique; ** expansion is unsupported')\n            kwargs[item.arg] = literal(item.value)\n    return args, kwargs\n\n\ndef _convert(value, parameter):\n    annotation = parameter.annotation\n    name = annotation if isinstance(annotation, str) else str(annotation)\n    if type(value) is not list:\n        return value\n    if 'ListNode' in name:\n        head = None\n        for item in reversed(value):\n            head = ListNode(item, head)\n        return head\n    if 'TreeNode' in name:\n        if not value or value[0] is None:\n            return None\n        root = TreeNode(value[0])\n        queue, index = [root], 1\n        for parent in queue:\n            for field in ('left', 'right'):\n                if index >= len(value):\n                    return root\n                item = value[index]\n                index += 1\n                if item is not None:\n                    child = TreeNode(item)\n                    setattr(parent, field, child)\n                    queue.append(child)\n        if index < len(value):\n            raise ValueError('Tree input has unreachable nodes')\n        return root\n    return value\n\n\n\ndef _compare_result(actual, expected_text):\n    \"\"\"Compare complete builtin values, independently of display snapshots.\"\"\"\n    class Skip(Exception):\n        pass\n\n    class Constants(ast.NodeTransformer):\n        def visit_Name(self, node):\n            values = {'true': True, 'false': False, 'null': None}\n            return ast.copy_location(ast.Constant(values[node.id]), node) if node.id in values else node\n\n    if len(expected_text) > 100000:\n        return {'status': 'error', 'message': '预期结果超过 100000 字符限制'}\n    try:\n        expected = ast.literal_eval(Constants().visit(ast.parse(expected_text.strip(), mode='eval')))\n    except (ValueError, SyntaxError, TypeError, RecursionError) as error:\n        return {'status': 'error', 'message': '预期结果格式无效：请填写 Python 或 JSON 字面量（' + type(error).__name__ + '）'}\n    budget = 10000\n    has_float = False\n\n    def validate(value, path, ancestors=frozenset(), depth=0):\n        nonlocal budget, has_float\n        budget -= 1\n        if budget < 0 or depth > 64:\n            raise Skip('比较超过 10000 个值或 64 层深度限制')\n        kind = type(value)\n        if kind not in (type(None), bool, int, float, str, list, tuple, dict):\n            raise Skip(path + '：暂不支持此对象类型的比较')\n        has_float = has_float or kind is float\n        if kind in (list, tuple, dict):\n            if id(value) in ancestors:\n                raise Skip(path + '：循环引用无法比较')\n            ancestors = ancestors | {id(value)}\n            if kind is dict:\n                for key, item in value.items():\n                    validate(key, path + '[键]', ancestors, depth + 1)\n                    validate(item, path + '[' + _snapshot(key)[:80] + ']', ancestors, depth + 1)\n            else:\n                for index, item in enumerate(value):\n                    validate(item, path + '[' + str(index) + ']', ancestors, depth + 1)\n\n    def key_identity(key):\n        return (type(key).__name__, tuple(key_identity(v) for v in key) if type(key) is tuple else key)\n\n    def difference(value, wanted, path='$'):\n        if type(value) is not type(wanted):\n            return path + '：类型不同，预期 ' + type(wanted).__name__ + '，实际 ' + type(value).__name__\n        if type(value) in (list, tuple, dict):\n            if len(value) != len(wanted):\n                return path + '：长度不同，预期 ' + str(len(wanted)) + '，实际 ' + str(len(value))\n            if type(value) is dict:\n                actual_keys = {key_identity(key): key for key in value}\n                for key, item in wanted.items():\n                    location = path + '[' + _snapshot(key)[:80] + ']'\n                    identity = key_identity(key)\n                    if identity not in actual_keys:\n                        return location + '：缺少预期键（键类型也须一致）'\n                    mismatch = difference(value[actual_keys[identity]], item, location)\n                    if mismatch:\n                        return mismatch\n            else:\n                for index, (item, expected_item) in enumerate(zip(value, wanted)):\n                    mismatch = difference(item, expected_item, path + '[' + str(index) + ']')\n                    if mismatch:\n                        return mismatch\n        elif value != wanted:\n            return path + '：值不同，预期 ' + _snapshot(wanted)[:200] + '，实际 ' + _snapshot(value)[:200]\n        return ''\n\n    try:\n        validate(actual, '$')\n        validate(expected, '$')\n        mismatch = difference(actual, expected)\n    except Skip as error:\n        return {'status': 'skip', 'message': str(error)}\n    suffix = '；浮点数按精确值比较，容差为 0' if has_float else ''\n    return {'status': 'fail' if mismatch else 'pass', 'message': (mismatch or '实际返回值与预期结果一致') + suffix}\n\n\ndef trace_code(code: str, case_text: str, entry: str = '', expected_text: str = ''):\n    events, frame_states, loops = [], {}, {}\n    result = {'events': events, 'result': '', 'stdout': '', 'error': '', 'limited': False, 'entry': entry}\n    result['comparison'] = {'status': 'skip', 'message': '未填写预期结果'}\n    frame_ids, next_frame_id = {}, 0\n    returned, actual = False, None\n    started = time.monotonic()\n\n    class Output(io.StringIO):\n        def write(self, text):\n            remaining = 4000 - self.tell()\n            super().write(text[:max(0, remaining)])\n            if len(text) > remaining:\n                raise _Limit('Output limit (4000 characters) reached')\n            return len(text)\n\n    output = Output()\n\n    class Instrument(ast.NodeTransformer):\n        def __init__(self):\n            self.parents = []\n            self.owner = ('<module>', 1)\n\n        def scope(self, node):\n            previous = self.parents, self.owner\n            self.parents = []\n            self.owner = (node.name, min([node.lineno] + [item.lineno for item in node.decorator_list]))\n            self.generic_visit(node)\n            self.parents, self.owner = previous\n            return node\n\n        visit_FunctionDef = scope\n        visit_AsyncFunctionDef = scope\n        visit_ClassDef = scope\n\n        def instrument(self, node):\n            line = node.lineno\n            loops[line] = (node.body[-1].end_lineno, tuple(self.parents), self.owner)\n            self.parents.append(line)\n            self.generic_visit(node)\n            self.parents.pop()\n            injected = ast.Expr(value=ast.Call(func=ast.Name(id='_openleet_tick', ctx=ast.Load()), args=[ast.Constant(line)], keywords=[]))\n            for child in ast.walk(injected):\n                child.lineno = child.end_lineno = 0\n                child.col_offset = child.end_col_offset = 0\n            node.body.insert(0, injected)\n            return node\n\n        visit_For = instrument\n        visit_While = instrument\n\n    def tick(line):\n        frame = sys._getframe(1)\n        state = frame_states.setdefault(id(frame), {})\n        parents = loops[line][1]\n        signature = tuple(state.get(parent, (None, 0))[1] for parent in parents)\n        old_signature, count = state.get(line, (None, 0))\n        state[line] = (signature, count + 1 if signature == old_signature else 1)\n        for child, (_, ancestors, _) in loops.items():\n            if line in ancestors:\n                state.pop(child, None)\n\n    def trace(frame, event, arg):\n        nonlocal next_frame_id\n        if frame.f_code.co_filename != '<openleet-user>':\n            return trace\n        if event == 'call':\n            next_frame_id += 1\n            frame_ids[id(frame)] = next_frame_id\n        if time.monotonic() - started > 3:\n            raise _Limit('Execution time limit (3 seconds) reached')\n        if event not in ('line', 'return', 'exception') or frame.f_lineno == 0:\n            return trace\n        if len(events) >= 2000:\n            raise _Limit('Trace limit (2000 events) reached')\n        state = frame_states.setdefault(id(frame), {})\n        depth, parent = 0, frame.f_back\n        while parent:\n            if parent.f_code.co_filename == '<openleet-user>':\n                depth += 1\n            parent = parent.f_back\n        snapshot = {key: _snapshot(value) for key, value in itertools.islice(frame.f_locals.items(), 100)\n                    if not key.startswith('__') and key not in namespace_base}\n        # iteration counts bodies entered so far in this activation. A first\n        # condition/iterator check is 0; body snapshots start at 1.\n        active = [{'line': line, 'iteration': state.get(line, (None, 0))[1]}\n                  for line, (end, _, owner) in loops.items() if line <= frame.f_lineno <= end\n                  and owner == (frame.f_code.co_name, frame.f_code.co_firstlineno)]\n        item = {'line': frame.f_lineno, 'event': 'before' if event == 'line' else event,\n                'locals': snapshot, 'loops': active, 'function': frame.f_code.co_name, 'depth': depth, 'frameId': frame_ids[id(frame)]}\n        if event == 'return':\n            item['returnValue'] = _snapshot(arg)\n            frame_states.pop(id(frame), None)\n            frame_ids.pop(id(frame), None)\n        elif event == 'exception':\n            item['exception'] = arg[0].__name__ + ': ' + str(arg[1])[:500]\n        events.append(item)\n        return trace\n\n    namespace_base = {name: getattr(typing, name) for name in typing.__all__}\n    namespace_base.update({'ListNode': ListNode, 'TreeNode': TreeNode, '_openleet_tick': tick})\n    namespace = dict(namespace_base)\n    old_trace = sys.gettrace()\n    try:\n        args, kwargs = _inputs(case_text)\n        tree = Instrument().visit(ast.parse(code, filename='<openleet-user>'))\n        compiled = compile(ast.fix_missing_locations(tree), '<openleet-user>', 'exec')\n        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):\n            sys.settrace(trace)\n            exec(compiled, namespace)\n            target = None\n            solution = namespace.get('Solution')\n            candidates = {}\n            if inspect.isclass(solution):\n                instance = solution()\n                candidates.update({name: getattr(instance, name) for name, value in vars(solution).items()\n                                   if not name.startswith('_') and inspect.isfunction(value)})\n            else:\n                candidates.update({name: value for name, value in namespace.items()\n                                   if not name.startswith('_') and inspect.isfunction(value)\n                                   and value.__code__.co_filename == '<openleet-user>'})\n            selected = entry.removeprefix('Solution.')\n            if selected:\n                if selected not in candidates:\n                    raise ValueError('Entry not found: ' + entry)\n                target = candidates[selected]\n            elif len(candidates) == 1:\n                selected, target = next(iter(candidates.items()))\n            elif candidates:\n                raise ValueError('Choose an entry: ' + ', '.join(candidates))\n            elif args or kwargs:\n                raise ValueError('No callable entry found for the supplied inputs')\n            if target:\n                result['entry'] = selected\n                signature = inspect.signature(target)\n                bound = signature.bind(*args, **kwargs)\n                for name, value in bound.arguments.items():\n                    bound.arguments[name] = _convert(value, signature.parameters[name])\n                actual = target(*bound.args, **bound.kwargs)\n                result['result'] = _snapshot(actual)\n                returned = True\n    except _Limit as error:\n        result['limited'] = True\n        result['error'] = str(error)\n    except BaseException as error:\n        result['error'] = type(error).__name__ + ': ' + str(error)[:1000]\n    finally:\n        sys.settrace(old_trace)\n        result['stdout'] = output.getvalue()\n    if expected_text.strip():\n        if result['error'] or result['limited']:\n            result['comparison'] = {'status': 'error', 'message': '执行失败或达到限制，无法比较返回值'}\n        elif returned:\n            result['comparison'] = _compare_result(actual, expected_text)\n        else:\n            result['comparison'] = {'status': 'skip', 'message': '未调用入口函数，缺少可比较的返回值'}\n    return result\n";
 function parseDescriptionCases(text) {
   const cases = [];
   const pattern = /(?:\bInput|输入)\s*[:：]\s*([\s\S]*?)(?:\bOutput|输出)\s*[:：]/gi;
@@ -1620,7 +1648,8 @@ function pythonDebugWorker() {
         engine.globals.set('_oc_code', data.code);
         engine.globals.set('_oc_case', data.input);
         engine.globals.set('_oc_entry', data.entry);
-        const result = engine.runPython('import json\njson.dumps(trace_code(_oc_code, _oc_case, _oc_entry), ensure_ascii=False)');
+        engine.globals.set('_oc_expected', data.expected || '');
+        const result = engine.runPython('import json\njson.dumps(trace_code(_oc_code, _oc_case, _oc_entry, _oc_expected), ensure_ascii=False)');
         self.postMessage({ type: 'result', result: JSON.parse(result) });
       }
     } catch (error) {
@@ -1668,6 +1697,25 @@ function createPythonDebugRun(payload, onStatus) {
   } };
 }
 
+function debugVariableChanges(events, index) {
+  const current = events[index];
+  if (!current) return { first: true, rows: [] };
+  let previous;
+  if (current.frameId !== undefined) {
+    for (let i = index - 1; i >= 0; i--) {
+      if (events[i].frameId === current.frameId) { previous = events[i]; break; }
+    }
+  }
+  const before = previous?.locals || {}, after = current.locals || {};
+  const names = [...new Set([...Object.keys(after), ...Object.keys(before)])];
+  const has = (object, name) => Object.prototype.hasOwnProperty.call(object, name);
+  return { first: !previous, rows: names.map(name => ({
+    name,
+    kind: !previous ? 'initial' : !has(after, name) ? 'removed' : !has(before, name) ? 'added' : before[name] !== after[name] ? 'changed' : 'unchanged',
+    before: before[name], value: after[name],
+  })) };
+}
+
 function installPythonDebugger() {
   addStyle(`
 .ocleet-panel.ocleet-debug-open{width:960px;height:88vh;max-height:calc(100vh - 24px)}
@@ -1691,6 +1739,7 @@ function installPythonDebugger() {
 .ocleet-debug-vars div{display:grid;grid-template-columns:minmax(60px,auto) 1fr;gap:10px;padding:6px 0;border-bottom:1px solid #ffffff12}
 .ocleet-debug-vars dt{color:#9baeff;font-family:Consolas,monospace}
 .ocleet-debug-vars dd{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-family:Consolas,monospace}
+.ocleet-debug-vars .changed{background:#b9932320}.ocleet-debug-vars .added{background:#37a77b20}.ocleet-debug-vars .removed{background:#c2575720}
 .ocleet-debug-result{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:110px;overflow:auto;margin:0;color:#bec9df}
 @media(max-width:650px){.ocleet-debug-workspace{grid-template-columns:1fr}.ocleet-debug-code,.ocleet-debug-inspect{max-height:32vh}.ocleet-debug-case{grid-template-columns:1fr}}
 `);
@@ -1703,6 +1752,7 @@ function installPythonDebugger() {
     <div class="ocleet-debug-toolbar"><button class="ocleet-btn" data-debug="read">读取代码与用例</button><button class="ocleet-btn" data-debug="add">添加用例</button><button class="ocleet-btn" data-debug="delete">删除用例</button><button class="ocleet-btn primary" data-debug="run">运行当前用例</button><button class="ocleet-btn" data-debug="stop" disabled>停止</button></div>
     <div class="ocleet-debug-case"><label>测试用例<select data-debug="case" aria-label="调试测试用例"></select></label><label>入口方法（单一方法自动识别）<input data-debug="entry" placeholder="例如 twoSum" autocomplete="off" /></label></div>
     <label>当前用例输入（可编辑；每行一个参数，或 nums=[…], target=9）<textarea data-debug="input" aria-label="调试用例输入" spellcheck="false"></textarea></label>
+    <label>预期输出（留空则不比较）<textarea data-debug="expected" aria-label="预期输出" maxlength="16000" spellcheck="false"></textarea></label>
     <div class="ocleet-debug-status" data-debug="status" role="status">读取后运行用例，再点击代码行查看变量。</div>
     <div class="ocleet-debug-toolbar"><button class="ocleet-btn" data-debug="prev">上一步</button><button class="ocleet-btn" data-debug="next">下一步</button><label>所选行的执行记录<select data-debug="occurrence" aria-label="执行记录"></select></label></div>
     <div class="ocleet-debug-workspace"><div class="ocleet-debug-code" data-debug="code" aria-label="点击代码行查看执行状态"></div><div class="ocleet-debug-inspect"><div data-debug="position" class="ocleet-debug-status">尚未运行</div><dl class="ocleet-debug-vars" data-debug="vars"></dl><pre class="ocleet-debug-result" data-debug="result"></pre></div></div>`;
@@ -1713,7 +1763,7 @@ function installPythonDebugger() {
   const savedKey = () => 'debug-cases:' + location.hostname + ':' + (currentSlug() || location.pathname);
   const status = text => { el('status').textContent = text; };
   function saveCases() {
-    store.set(savedKey(), cases.filter(c => c.manual).slice(0, 30).map(c => ({ name: c.name, input: c.input })));
+    store.set(savedKey(), cases.filter(c => c.manual).slice(0, 30).map(c => ({ name: c.name, input: c.input, expected: (c.expected || '').slice(0, 16000) })));
   }
   function cancel() {
     runVersion++;
@@ -1738,6 +1788,7 @@ function installPythonDebugger() {
     selected = Math.max(0, Math.min(selected, cases.length - 1));
     el('case').value = String(selected);
     el('input').value = cases[selected]?.input || '';
+    el('expected').value = cases[selected]?.expected || '';
   }
   function getCode() {
     const data = readCode();
@@ -1803,9 +1854,14 @@ function installPythonDebugger() {
     const loops = (event.loops || []).map(loop => `第 ${loop.line} 行循环：第 ${loop.iteration} 次`).join('；');
     el('position').textContent = `步骤 ${index + 1}/${events.length} · 第 ${event.line} 行 · ${event.function} · 调用深度 ${event.depth}\n${event.event === 'before' ? '该行执行前的变量（下一步查看后续状态）' : event.event === 'return' ? '函数返回：' + event.returnValue : '此行抛出异常：' + event.exception}${loops ? '\n' + loops : ''}`;
     el('vars').replaceChildren();
-    for (const [name, value] of Object.entries(event.locals || {})) {
+    const changes = debugVariableChanges(events, index);
+    el('position').textContent += changes.first ? '\n首次状态' : '\n变量变化：对比同一调用帧的上一条执行记录';
+    for (const { name, value, before, kind } of changes.rows) {
       const row = document.createElement('div'), key = document.createElement('dt'), val = document.createElement('dd');
-      key.textContent = name; val.textContent = value; row.append(key, val); el('vars').appendChild(row);
+      row.className = kind;
+      key.textContent = name;
+      val.textContent = kind === 'changed' ? before + ' → ' + value : kind === 'added' ? '新增：' + value : kind === 'removed' ? '删除：' + before : value;
+      row.append(key, val); el('vars').appendChild(row);
     }
     el('prev').disabled = index <= 0; el('next').disabled = index >= events.length - 1;
   }
@@ -1816,15 +1872,19 @@ function installPythonDebugger() {
       if (pageKey !== location.pathname) { onRouteChange(); throw new Error('题目已切换，请重新读取代码与用例。'); }
       snapshot = getCode(); renderCode();
       if (el('input').value.length > 16000) throw new Error('用例输入过长，请缩小后重试。');
+      if (el('expected').value.length > 16000) throw new Error('预期输出超过 16,000 字符，请缩小后重试。');
       el('run').disabled = true; el('stop').disabled = false;
-      activeRun = createPythonDebugRun({ code: snapshot, input: el('input').value, entry: el('entry').value.trim() }, status);
+      activeRun = createPythonDebugRun({ code: snapshot, input: el('input').value, entry: el('entry').value.trim(), expected: el('expected').value }, status);
       const result = await activeRun.promise;
       if (version !== runVersion || path !== location.pathname) return;
       events = result.events || [];
       const visited = new Set(events.map(event => event.line));
       lineButtons.forEach((button, i) => button.classList.toggle('visited', visited.has(i + 1)));
-      el('result').textContent = `返回值：${result.result}\n${result.error ? '错误：' + result.error + '\n' : ''}${result.stdout ? '标准输出：\n' + result.stdout : ''}`;
+      const comparison = result.comparison || { status: 'skip', message: '未提供比较结果。' };
+      const comparisonLabel = { pass: '通过', fail: '失败', skip: '未比较', error: '无法比较' }[comparison.status] || '未比较';
+      el('result').textContent = `${comparisonLabel}：${comparison.message}\n返回值：${result.result}\n${result.error ? '错误：' + result.error + '\n' : ''}${result.stdout ? '标准输出：\n' + result.stdout : ''}`;
       status(`${result.error ? '执行结束，发生错误。' : '执行完成。'}记录 ${events.length} 步。点击代码行查看每次到达时的变量。${result.limited ? '已达到记录限制，轨迹不完整。' : ''}${readCode().code !== snapshot ? '编辑器代码已改变；当前结果对应本次运行的代码快照。' : ''}`);
+      el('status').textContent += '变量快照可能截断，变化高亮按显示的快照比较。';
       if (events.length) showEvent(0);
     } catch (error) {
       if (version === runVersion && path === location.pathname) status(error.message);
@@ -1835,12 +1895,17 @@ function installPythonDebugger() {
   el('run').addEventListener('click', run);
   el('stop').addEventListener('click', () => { cancel(); status('已停止。可缩小用例后重新运行。'); });
   el('read').addEventListener('click', refresh);
-  el('case').addEventListener('change', () => { invalidate(); selected = Number(el('case').value); el('input').value = cases[selected]?.input || ''; });
+  el('case').addEventListener('change', () => { invalidate(); selected = Number(el('case').value); el('input').value = cases[selected]?.input || ''; el('expected').value = cases[selected]?.expected || ''; });
   el('entry').addEventListener('input', invalidate);
   el('input').addEventListener('input', () => {
     invalidate();
     if (!cases[selected]) cases.push({ name: '用例 1', input: '', manual: true });
     cases[selected].input = el('input').value; cases[selected].manual = true; saveCases();
+  });
+  el('expected').addEventListener('input', () => {
+    invalidate();
+    if (!cases[selected]) { cases.push({ name: '用例 1', input: el('input').value, manual: true }); selected = cases.length - 1; }
+    cases[selected].expected = el('expected').value.slice(0, 16000); cases[selected].manual = true; saveCases();
   });
   el('add').addEventListener('click', () => {
     if (cases.filter(c => c.manual).length >= 30) return status('最多保存 30 个手动用例，请先删除不需要的用例。');
@@ -1852,7 +1917,7 @@ function installPythonDebugger() {
   el('occurrence').addEventListener('change', () => showEvent(Number(el('occurrence').value)));
   function loadSavedCases() {
     const saved = store.get(savedKey(), []);
-    cases = Array.isArray(saved) ? saved.filter(c => c && typeof c.input === 'string' && typeof c.name === 'string').slice(0, 30).map(c => ({ ...c, manual: true })) : [];
+    cases = Array.isArray(saved) ? saved.filter(c => c && typeof c.input === 'string' && typeof c.name === 'string').slice(0, 30).map(c => ({ ...c, expected: typeof c.expected === 'string' ? c.expected.slice(0, 16000) : '', manual: true })) : [];
   }
   function onRouteChange() {
     invalidate(); pageKey = location.pathname; snapshot = ''; renderCode(); el('entry').value = '';

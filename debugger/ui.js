@@ -1,3 +1,22 @@
+function debugVariableChanges(events, index) {
+  const current = events[index];
+  if (!current) return { first: true, rows: [] };
+  let previous;
+  if (current.frameId !== undefined) {
+    for (let i = index - 1; i >= 0; i--) {
+      if (events[i].frameId === current.frameId) { previous = events[i]; break; }
+    }
+  }
+  const before = previous?.locals || {}, after = current.locals || {};
+  const names = [...new Set([...Object.keys(after), ...Object.keys(before)])];
+  const has = (object, name) => Object.prototype.hasOwnProperty.call(object, name);
+  return { first: !previous, rows: names.map(name => ({
+    name,
+    kind: !previous ? 'initial' : !has(after, name) ? 'removed' : !has(before, name) ? 'added' : before[name] !== after[name] ? 'changed' : 'unchanged',
+    before: before[name], value: after[name],
+  })) };
+}
+
 function installPythonDebugger() {
   addStyle(`
 .ocleet-panel.ocleet-debug-open{width:960px;height:88vh;max-height:calc(100vh - 24px)}
@@ -21,6 +40,7 @@ function installPythonDebugger() {
 .ocleet-debug-vars div{display:grid;grid-template-columns:minmax(60px,auto) 1fr;gap:10px;padding:6px 0;border-bottom:1px solid #ffffff12}
 .ocleet-debug-vars dt{color:#9baeff;font-family:Consolas,monospace}
 .ocleet-debug-vars dd{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-family:Consolas,monospace}
+.ocleet-debug-vars .changed{background:#b9932320}.ocleet-debug-vars .added{background:#37a77b20}.ocleet-debug-vars .removed{background:#c2575720}
 .ocleet-debug-result{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:110px;overflow:auto;margin:0;color:#bec9df}
 @media(max-width:650px){.ocleet-debug-workspace{grid-template-columns:1fr}.ocleet-debug-code,.ocleet-debug-inspect{max-height:32vh}.ocleet-debug-case{grid-template-columns:1fr}}
 `);
@@ -33,6 +53,7 @@ function installPythonDebugger() {
     <div class="ocleet-debug-toolbar"><button class="ocleet-btn" data-debug="read">读取代码与用例</button><button class="ocleet-btn" data-debug="add">添加用例</button><button class="ocleet-btn" data-debug="delete">删除用例</button><button class="ocleet-btn primary" data-debug="run">运行当前用例</button><button class="ocleet-btn" data-debug="stop" disabled>停止</button></div>
     <div class="ocleet-debug-case"><label>测试用例<select data-debug="case" aria-label="调试测试用例"></select></label><label>入口方法（单一方法自动识别）<input data-debug="entry" placeholder="例如 twoSum" autocomplete="off" /></label></div>
     <label>当前用例输入（可编辑；每行一个参数，或 nums=[…], target=9）<textarea data-debug="input" aria-label="调试用例输入" spellcheck="false"></textarea></label>
+    <label>预期输出（留空则不比较）<textarea data-debug="expected" aria-label="预期输出" maxlength="16000" spellcheck="false"></textarea></label>
     <div class="ocleet-debug-status" data-debug="status" role="status">读取后运行用例，再点击代码行查看变量。</div>
     <div class="ocleet-debug-toolbar"><button class="ocleet-btn" data-debug="prev">上一步</button><button class="ocleet-btn" data-debug="next">下一步</button><label>所选行的执行记录<select data-debug="occurrence" aria-label="执行记录"></select></label></div>
     <div class="ocleet-debug-workspace"><div class="ocleet-debug-code" data-debug="code" aria-label="点击代码行查看执行状态"></div><div class="ocleet-debug-inspect"><div data-debug="position" class="ocleet-debug-status">尚未运行</div><dl class="ocleet-debug-vars" data-debug="vars"></dl><pre class="ocleet-debug-result" data-debug="result"></pre></div></div>`;
@@ -43,7 +64,7 @@ function installPythonDebugger() {
   const savedKey = () => 'debug-cases:' + location.hostname + ':' + (currentSlug() || location.pathname);
   const status = text => { el('status').textContent = text; };
   function saveCases() {
-    store.set(savedKey(), cases.filter(c => c.manual).slice(0, 30).map(c => ({ name: c.name, input: c.input })));
+    store.set(savedKey(), cases.filter(c => c.manual).slice(0, 30).map(c => ({ name: c.name, input: c.input, expected: (c.expected || '').slice(0, 16000) })));
   }
   function cancel() {
     runVersion++;
@@ -68,6 +89,7 @@ function installPythonDebugger() {
     selected = Math.max(0, Math.min(selected, cases.length - 1));
     el('case').value = String(selected);
     el('input').value = cases[selected]?.input || '';
+    el('expected').value = cases[selected]?.expected || '';
   }
   function getCode() {
     const data = readCode();
@@ -133,9 +155,14 @@ function installPythonDebugger() {
     const loops = (event.loops || []).map(loop => `第 ${loop.line} 行循环：第 ${loop.iteration} 次`).join('；');
     el('position').textContent = `步骤 ${index + 1}/${events.length} · 第 ${event.line} 行 · ${event.function} · 调用深度 ${event.depth}\n${event.event === 'before' ? '该行执行前的变量（下一步查看后续状态）' : event.event === 'return' ? '函数返回：' + event.returnValue : '此行抛出异常：' + event.exception}${loops ? '\n' + loops : ''}`;
     el('vars').replaceChildren();
-    for (const [name, value] of Object.entries(event.locals || {})) {
+    const changes = debugVariableChanges(events, index);
+    el('position').textContent += changes.first ? '\n首次状态' : '\n变量变化：对比同一调用帧的上一条执行记录';
+    for (const { name, value, before, kind } of changes.rows) {
       const row = document.createElement('div'), key = document.createElement('dt'), val = document.createElement('dd');
-      key.textContent = name; val.textContent = value; row.append(key, val); el('vars').appendChild(row);
+      row.className = kind;
+      key.textContent = name;
+      val.textContent = kind === 'changed' ? before + ' → ' + value : kind === 'added' ? '新增：' + value : kind === 'removed' ? '删除：' + before : value;
+      row.append(key, val); el('vars').appendChild(row);
     }
     el('prev').disabled = index <= 0; el('next').disabled = index >= events.length - 1;
   }
@@ -146,15 +173,19 @@ function installPythonDebugger() {
       if (pageKey !== location.pathname) { onRouteChange(); throw new Error('题目已切换，请重新读取代码与用例。'); }
       snapshot = getCode(); renderCode();
       if (el('input').value.length > 16000) throw new Error('用例输入过长，请缩小后重试。');
+      if (el('expected').value.length > 16000) throw new Error('预期输出超过 16,000 字符，请缩小后重试。');
       el('run').disabled = true; el('stop').disabled = false;
-      activeRun = createPythonDebugRun({ code: snapshot, input: el('input').value, entry: el('entry').value.trim() }, status);
+      activeRun = createPythonDebugRun({ code: snapshot, input: el('input').value, entry: el('entry').value.trim(), expected: el('expected').value }, status);
       const result = await activeRun.promise;
       if (version !== runVersion || path !== location.pathname) return;
       events = result.events || [];
       const visited = new Set(events.map(event => event.line));
       lineButtons.forEach((button, i) => button.classList.toggle('visited', visited.has(i + 1)));
-      el('result').textContent = `返回值：${result.result}\n${result.error ? '错误：' + result.error + '\n' : ''}${result.stdout ? '标准输出：\n' + result.stdout : ''}`;
+      const comparison = result.comparison || { status: 'skip', message: '未提供比较结果。' };
+      const comparisonLabel = { pass: '通过', fail: '失败', skip: '未比较', error: '无法比较' }[comparison.status] || '未比较';
+      el('result').textContent = `${comparisonLabel}：${comparison.message}\n返回值：${result.result}\n${result.error ? '错误：' + result.error + '\n' : ''}${result.stdout ? '标准输出：\n' + result.stdout : ''}`;
       status(`${result.error ? '执行结束，发生错误。' : '执行完成。'}记录 ${events.length} 步。点击代码行查看每次到达时的变量。${result.limited ? '已达到记录限制，轨迹不完整。' : ''}${readCode().code !== snapshot ? '编辑器代码已改变；当前结果对应本次运行的代码快照。' : ''}`);
+      el('status').textContent += '变量快照可能截断，变化高亮按显示的快照比较。';
       if (events.length) showEvent(0);
     } catch (error) {
       if (version === runVersion && path === location.pathname) status(error.message);
@@ -165,12 +196,17 @@ function installPythonDebugger() {
   el('run').addEventListener('click', run);
   el('stop').addEventListener('click', () => { cancel(); status('已停止。可缩小用例后重新运行。'); });
   el('read').addEventListener('click', refresh);
-  el('case').addEventListener('change', () => { invalidate(); selected = Number(el('case').value); el('input').value = cases[selected]?.input || ''; });
+  el('case').addEventListener('change', () => { invalidate(); selected = Number(el('case').value); el('input').value = cases[selected]?.input || ''; el('expected').value = cases[selected]?.expected || ''; });
   el('entry').addEventListener('input', invalidate);
   el('input').addEventListener('input', () => {
     invalidate();
     if (!cases[selected]) cases.push({ name: '用例 1', input: '', manual: true });
     cases[selected].input = el('input').value; cases[selected].manual = true; saveCases();
+  });
+  el('expected').addEventListener('input', () => {
+    invalidate();
+    if (!cases[selected]) { cases.push({ name: '用例 1', input: el('input').value, manual: true }); selected = cases.length - 1; }
+    cases[selected].expected = el('expected').value.slice(0, 16000); cases[selected].manual = true; saveCases();
   });
   el('add').addEventListener('click', () => {
     if (cases.filter(c => c.manual).length >= 30) return status('最多保存 30 个手动用例，请先删除不需要的用例。');
@@ -182,7 +218,7 @@ function installPythonDebugger() {
   el('occurrence').addEventListener('change', () => showEvent(Number(el('occurrence').value)));
   function loadSavedCases() {
     const saved = store.get(savedKey(), []);
-    cases = Array.isArray(saved) ? saved.filter(c => c && typeof c.input === 'string' && typeof c.name === 'string').slice(0, 30).map(c => ({ ...c, manual: true })) : [];
+    cases = Array.isArray(saved) ? saved.filter(c => c && typeof c.input === 'string' && typeof c.name === 'string').slice(0, 30).map(c => ({ ...c, expected: typeof c.expected === 'string' ? c.expected.slice(0, 16000) : '', manual: true })) : [];
   }
   function onRouteChange() {
     invalidate(); pageKey = location.pathname; snapshot = ''; renderCode(); el('entry').value = '';

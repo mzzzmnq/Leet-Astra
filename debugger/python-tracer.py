@@ -121,9 +121,91 @@ def _convert(value, parameter):
     return value
 
 
-def trace_code(code: str, case_text: str, entry: str = ''):
+
+def _compare_result(actual, expected_text):
+    """Compare complete builtin values, independently of display snapshots."""
+    class Skip(Exception):
+        pass
+
+    class Constants(ast.NodeTransformer):
+        def visit_Name(self, node):
+            values = {'true': True, 'false': False, 'null': None}
+            return ast.copy_location(ast.Constant(values[node.id]), node) if node.id in values else node
+
+    if len(expected_text) > 100000:
+        return {'status': 'error', 'message': '预期结果超过 100000 字符限制'}
+    try:
+        expected = ast.literal_eval(Constants().visit(ast.parse(expected_text.strip(), mode='eval')))
+    except (ValueError, SyntaxError, TypeError, RecursionError) as error:
+        return {'status': 'error', 'message': '预期结果格式无效：请填写 Python 或 JSON 字面量（' + type(error).__name__ + '）'}
+    budget = 10000
+    has_float = False
+
+    def validate(value, path, ancestors=frozenset(), depth=0):
+        nonlocal budget, has_float
+        budget -= 1
+        if budget < 0 or depth > 64:
+            raise Skip('比较超过 10000 个值或 64 层深度限制')
+        kind = type(value)
+        if kind not in (type(None), bool, int, float, str, list, tuple, dict):
+            raise Skip(path + '：暂不支持此对象类型的比较')
+        has_float = has_float or kind is float
+        if kind in (list, tuple, dict):
+            if id(value) in ancestors:
+                raise Skip(path + '：循环引用无法比较')
+            ancestors = ancestors | {id(value)}
+            if kind is dict:
+                for key, item in value.items():
+                    validate(key, path + '[键]', ancestors, depth + 1)
+                    validate(item, path + '[' + _snapshot(key)[:80] + ']', ancestors, depth + 1)
+            else:
+                for index, item in enumerate(value):
+                    validate(item, path + '[' + str(index) + ']', ancestors, depth + 1)
+
+    def key_identity(key):
+        return (type(key).__name__, tuple(key_identity(v) for v in key) if type(key) is tuple else key)
+
+    def difference(value, wanted, path='$'):
+        if type(value) is not type(wanted):
+            return path + '：类型不同，预期 ' + type(wanted).__name__ + '，实际 ' + type(value).__name__
+        if type(value) in (list, tuple, dict):
+            if len(value) != len(wanted):
+                return path + '：长度不同，预期 ' + str(len(wanted)) + '，实际 ' + str(len(value))
+            if type(value) is dict:
+                actual_keys = {key_identity(key): key for key in value}
+                for key, item in wanted.items():
+                    location = path + '[' + _snapshot(key)[:80] + ']'
+                    identity = key_identity(key)
+                    if identity not in actual_keys:
+                        return location + '：缺少预期键（键类型也须一致）'
+                    mismatch = difference(value[actual_keys[identity]], item, location)
+                    if mismatch:
+                        return mismatch
+            else:
+                for index, (item, expected_item) in enumerate(zip(value, wanted)):
+                    mismatch = difference(item, expected_item, path + '[' + str(index) + ']')
+                    if mismatch:
+                        return mismatch
+        elif value != wanted:
+            return path + '：值不同，预期 ' + _snapshot(wanted)[:200] + '，实际 ' + _snapshot(value)[:200]
+        return ''
+
+    try:
+        validate(actual, '$')
+        validate(expected, '$')
+        mismatch = difference(actual, expected)
+    except Skip as error:
+        return {'status': 'skip', 'message': str(error)}
+    suffix = '；浮点数按精确值比较，容差为 0' if has_float else ''
+    return {'status': 'fail' if mismatch else 'pass', 'message': (mismatch or '实际返回值与预期结果一致') + suffix}
+
+
+def trace_code(code: str, case_text: str, entry: str = '', expected_text: str = ''):
     events, frame_states, loops = [], {}, {}
     result = {'events': events, 'result': '', 'stdout': '', 'error': '', 'limited': False, 'entry': entry}
+    result['comparison'] = {'status': 'skip', 'message': '未填写预期结果'}
+    frame_ids, next_frame_id = {}, 0
+    returned, actual = False, None
     started = time.monotonic()
 
     class Output(io.StringIO):
@@ -181,8 +263,12 @@ def trace_code(code: str, case_text: str, entry: str = ''):
                 state.pop(child, None)
 
     def trace(frame, event, arg):
+        nonlocal next_frame_id
         if frame.f_code.co_filename != '<openleet-user>':
             return trace
+        if event == 'call':
+            next_frame_id += 1
+            frame_ids[id(frame)] = next_frame_id
         if time.monotonic() - started > 3:
             raise _Limit('Execution time limit (3 seconds) reached')
         if event not in ('line', 'return', 'exception') or frame.f_lineno == 0:
@@ -203,10 +289,11 @@ def trace_code(code: str, case_text: str, entry: str = ''):
                   for line, (end, _, owner) in loops.items() if line <= frame.f_lineno <= end
                   and owner == (frame.f_code.co_name, frame.f_code.co_firstlineno)]
         item = {'line': frame.f_lineno, 'event': 'before' if event == 'line' else event,
-                'locals': snapshot, 'loops': active, 'function': frame.f_code.co_name, 'depth': depth}
+                'locals': snapshot, 'loops': active, 'function': frame.f_code.co_name, 'depth': depth, 'frameId': frame_ids[id(frame)]}
         if event == 'return':
             item['returnValue'] = _snapshot(arg)
             frame_states.pop(id(frame), None)
+            frame_ids.pop(id(frame), None)
         elif event == 'exception':
             item['exception'] = arg[0].__name__ + ': ' + str(arg[1])[:500]
         events.append(item)
@@ -251,7 +338,9 @@ def trace_code(code: str, case_text: str, entry: str = ''):
                 bound = signature.bind(*args, **kwargs)
                 for name, value in bound.arguments.items():
                     bound.arguments[name] = _convert(value, signature.parameters[name])
-                result['result'] = _snapshot(target(*bound.args, **bound.kwargs))
+                actual = target(*bound.args, **bound.kwargs)
+                result['result'] = _snapshot(actual)
+                returned = True
     except _Limit as error:
         result['limited'] = True
         result['error'] = str(error)
@@ -260,4 +349,11 @@ def trace_code(code: str, case_text: str, entry: str = ''):
     finally:
         sys.settrace(old_trace)
         result['stdout'] = output.getvalue()
+    if expected_text.strip():
+        if result['error'] or result['limited']:
+            result['comparison'] = {'status': 'error', 'message': '执行失败或达到限制，无法比较返回值'}
+        elif returned:
+            result['comparison'] = _compare_result(actual, expected_text)
+        else:
+            result['comparison'] = {'status': 'skip', 'message': '未调用入口函数，缺少可比较的返回值'}
     return result

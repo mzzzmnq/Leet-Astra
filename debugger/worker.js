@@ -12,7 +12,8 @@ function pythonDebugWorker() {
         engine.globals.set('_oc_code', data.code);
         engine.globals.set('_oc_case', data.input);
         engine.globals.set('_oc_entry', data.entry);
-        const result = engine.runPython('import json\njson.dumps(trace_code(_oc_code, _oc_case, _oc_entry), ensure_ascii=False)');
+        engine.globals.set('_oc_expected', data.expected || '');
+        const result = engine.runPython('import json\njson.dumps(trace_code(_oc_code, _oc_case, _oc_entry, _oc_expected), ensure_ascii=False)');
         self.postMessage({ type: 'result', result: JSON.parse(result) });
       }
     } catch (error) {

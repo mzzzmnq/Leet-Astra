@@ -151,19 +151,21 @@
             { choices: [{ delta: { content: reply.slice(30, 120) } }] },
             { choices: [{ delta: { content: reply.slice(120) } }] },
           ];
-          let i = 0;
+          let i = 0, cancelled = false, timer;
           const tick = () => {
+            if (cancelled) return;
             if (i < events.length) {
               details.responseText += "data: " + JSON.stringify(events[i++]) + "\n\n";
               fire("onprogress");
-              setTimeout(tick, 350);
+              timer = setTimeout(tick, 350);
             } else {
               details.responseText += "data: [DONE]\n\n";
               details.status = 200;
               fire("onload");
             }
           };
-          setTimeout(tick, 300);
+          timer = setTimeout(tick, 300);
+          return { abort() { cancelled = true; clearTimeout(timer); } };
         };
 
         // Seed once; preserve preferences so reload can test saved UI settings.

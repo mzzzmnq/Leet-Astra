@@ -24,7 +24,7 @@ function setup(saved = new Map(), options = {}) {
     window: { addEventListener: (name, fn) => { windowEvents[name] = fn; } },
     document: { hidden: false, addEventListener: (name, fn) => { documentEvents[name] = fn; } },
     inputEl: { value: '', addEventListener: (name, fn) => { inputEvents[name] = fn; } },
-    sendBtn: {}, chatStatusEl: {}, problemEl: {}, codeStatusEl: {},
+    sendBtn: {}, stopReplyBtn: {}, chatStatusEl: {}, problemEl: {}, codeStatusEl: {},
     cfg: { mode: 'hint', model: 'test', includeCode: true },
     readProblem: () => ({ title: 'Problem' }),
     readCode: () => ({ code: 'CURRENT_CODE', codeSource: 'model' }),
@@ -36,7 +36,11 @@ function setup(saved = new Map(), options = {}) {
       rendered.push(bubble);
       return { onDelta: delta => { bubble.content += delta; }, onReasoning() {}, done() {}, fail: error => { bubble.error = error; } };
     },
-    directChat: (payload, onDelta, onReasoning) => new Promise((resolve, reject) => requests.push({ payload, onDelta, onReasoning, resolve, reject })),
+    directChat: (payload, onDelta, onReasoning, control) => new Promise((resolve, reject) => {
+      const request = { payload, onDelta, onReasoning, resolve, reject, aborted: false };
+      control.cancel = () => { request.aborted = true; reject(new Error('cancelled')); };
+      requests.push(request);
+    }),
   });
   vm.runInContext(source.slice(source.indexOf('  const store ='), source.indexOf('  /* ----------------------------------------------------------------- config */')), context);
   vm.runInContext(source.slice(source.indexOf('  function currentSlug()'), source.indexOf('  function readProblem()')), context);

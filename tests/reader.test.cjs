@@ -113,7 +113,7 @@ test('each chat request receives the latest code through readProblem and buildSy
     chatStatusEl: {}, problemEl: {}, codeStatusEl: {}, resetMessages: () => {}, renderCodeChip: () => {},
     readTitle: () => 'Two Sum', readDifficulty: () => 'Easy', readTags: () => [], readDescription: () => 'Description',
     BASE_SYSTEM: 'Assistant', SKILLS: { hint: { system: 'Hint' } }, cfg: { mode: 'hint', model: 'test', includeCode: true },
-    busy: false, history: [], inputEl: { value: 'Explain' }, sendBtn: {},
+    busy: false, history: [], inputEl: { value: 'Explain' }, sendBtn: {}, stopReplyBtn: {},
     addMessage: () => {}, renderProblemChip: () => {}, setStatus: () => {},
     addAssistant: () => ({ done() {}, text: () => 'Reply', fail: (message) => assert.fail(message) }),
     directChat: async (payload) => { requests.push(payload); },

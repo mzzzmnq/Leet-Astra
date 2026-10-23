@@ -6,12 +6,12 @@ const fs = require('node:fs');
 const os = require('node:os');
 const bundledPython = path.join(os.homedir(), '.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe');
 
-function trace(code, input = '', entry = '') {
+function trace(code, input = '', entry = '', expected_text = '') {
   const script = `import json,runpy,sys\nm=runpy.run_path(sys.argv[1])\np=json.load(sys.stdin)\nprint(json.dumps(m['trace_code'](**p)))`;
   const executable = process.env.PYTHON || (fs.existsSync(bundledPython) ? bundledPython : (process.platform === 'win32' ? 'py' : 'python3'));
   const args = [...(executable === 'py' ? ['-3'] : []), '-c', script, path.join(__dirname, '../debugger/python-tracer.py')];
   const run = spawnSync(executable, args, {
-    input: JSON.stringify({ code, case_text: input, entry }), encoding: 'utf8', windowsHide: true, timeout: 10000,
+    input: JSON.stringify({ code, case_text: input, entry, expected_text }), encoding: 'utf8', windowsHide: true, timeout: 10000,
   });
   assert.ifError(run.error);
   assert.equal(run.status, 0, run.stderr);
@@ -108,4 +108,59 @@ test('functions declared inside loops have their own loop scope', () => {
   assert.equal(r.error, '');
   const inner = r.events.filter(e => e.function === 'inner' && e.line === 5 && e.event === 'before');
   assert.deepEqual(inner.map(e => e.loops), [[{line:4,iteration:1}],[{line:4,iteration:2}],[{line:4,iteration:1}],[{line:4,iteration:2}]]);
+});
+
+test('comparison uses complete values beyond snapshot truncation', () => {
+  const expected = Array.from({length: 80}, (_, i) => i);
+  expected[65] = -1;
+  const r = trace('def solve():\n    return list(range(80))', '', '', JSON.stringify(expected));
+  assert.equal(r.comparison.status, 'fail');
+  assert.match(r.comparison.message, /\$\[65\]/);
+  assert.equal(trace('def solve():\n    return list(range(80))', '', '', JSON.stringify(Array.from({length:80}, (_,i)=>i))).comparison.status, 'pass');
+});
+
+test('comparison handles omitted, malformed, failed and limited executions', () => {
+  assert.equal(trace('def solve():\n    return 1').comparison.status, 'skip');
+  const invalid = trace('def solve():\n    return 1', '', '', '__import__("os").getcwd()');
+  assert.equal(invalid.comparison.status, 'error');
+  assert.equal(invalid.result, '1');
+  assert.equal(trace('def solve():\n    return 1 / 0', '', '', '1').comparison.status, 'error');
+  const limited = trace('def solve():\n    while True:\n        pass', '', '', 'null');
+  assert.equal(limited.limited, true);
+  assert.equal(limited.comparison.status, 'error');
+});
+
+test('comparison is typed, recursive and explicit about float precision', () => {
+  assert.equal(trace('def solve():\n    return True', '', '', '1').comparison.status, 'fail');
+  assert.equal(trace('def solve():\n    return {True: 2}', '', '', '{1: 2}').comparison.status, 'fail');
+  assert.equal(trace('def solve():\n    return {(True,): 2}', '', '', '{(1,): 2}').comparison.status, 'fail');
+  assert.equal(trace('def solve():\n    return (1, 2)', '', '', '[1, 2]').comparison.status, 'fail');
+  assert.equal(trace('def solve():\n    return {"x": [True, None]}', '', '', '{"x": [true, null]}').comparison.status, 'pass');
+  const r = trace('def solve():\n    return {"x": [0.1 + 0.2]}', '', '', '{"x": [0.3]}');
+  assert.equal(r.comparison.status, 'fail');
+  assert.match(r.comparison.message, /\$\['x'\]\[0\]/);
+  assert.match(r.comparison.message, /容差为 0/);
+});
+
+test('comparison skips complex objects, cycles and excessive traversal', () => {
+  assert.equal(trace('def solve():\n    return ListNode(1)', '', '', '[1]').comparison.status, 'skip');
+  assert.equal(trace('def solve():\n    x = []\n    x.append(x)\n    return x', '', '', '[]').comparison.status, 'skip');
+  const large = JSON.stringify(Array(6000).fill(0));
+  assert.equal(trace('def solve():\n    return [0] * 6000', '', '', large).comparison.status, 'skip');
+});
+
+test('recursive and sequential calls receive unique stable monotonic frame IDs', () => {
+  const code = 'def recurse(n):\n    if n:\n        recurse(n-1)\n    return n\ndef solve():\n    recurse(2)\n    recurse(2)\n    return 1';
+  const r = trace(code, '', 'solve', '1');
+  assert.equal(r.comparison.status, 'pass');
+  const calls = r.events.filter(e => e.function === 'recurse');
+  const firstIds = [...new Set(calls.map(e => e.frameId))];
+  assert.equal(firstIds.length, 6);
+  assert.deepEqual(firstIds, [...firstIds].sort((a,b)=>a-b));
+  for (const id of firstIds) {
+    const events = calls.filter(e => e.frameId === id);
+    assert.equal(events.at(-1).event, 'return');
+    assert.equal(new Set(events.map(e => e.locals.n)).size, 1);
+  }
+  assert.ok(r.events.every(e => Number.isInteger(e.frameId) && e.frameId > 0));
 });
