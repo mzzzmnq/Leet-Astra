@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Leet Astra
 // @namespace    opencode-leet
-// @version      3.3.2
+// @version      3.3.3
 // @description  在 LeetCode 题目页嵌入 AI 对话面板：分步提示 / 讲代码+复杂度 / Debug 报错 / 代码批注 / Python 知识点。纯前端，直接用你自己的 API key。
 // @author       opencode-leet
 // @match        https://leetcode.com/problems/*
@@ -132,7 +132,7 @@
     zhipu: { label: "智谱 · 免费", baseUrl: "https://open.bigmodel.cn/api/paas/v4", keyUrl: "https://bigmodel.cn/usercenter/proj-mgmt/apikeys",
       tip: "GLM-4.7-Flash 免费调用，适合中文题解和代码问答。需要智谱 API Key，高峰期可能限流。" },
     openrouter: { label: "OpenRouter · 免费", baseUrl: "https://openrouter.ai/api/v1", keyUrl: "https://openrouter.ai/settings/keys",
-      tip: "需要单独注册 OpenRouter 并创建 API Key。这里只列出免费版本；有请求额度和容量限制，失败时可手动换模型。" },
+      tip: "需要单独注册 OpenRouter 并创建 API Key。仅使用免费版本，并限制输入、输出和单次请求价格为零。免费额度或容量不足时，请切换模型。" },
   };
   const providerForBase = base => Object.keys(PROVIDERS).find(p =>
     PROVIDERS[p].baseUrl === String(base || "").replace(/\/+$/, ""));
@@ -146,12 +146,11 @@
   const currentProvider = () => providerForBase(cfg.baseUrl) || "zhipu";
   const goBase = () => PROVIDERS[currentProvider()].baseUrl;
   const chatUrl = () => goBase() + "/chat/completions";
-  // Official free pricing checked 2026-10-22; use explicit free variants.
+  // Official free pricing checked 2026-10-24; use explicit free variants.
   const ZHIPU_MODELS = [
     { id: "glm-4.7-flash", label: "GLM-4.7-Flash · 免费", tip: "中文解题、代码解释与轻量推理。" },
   ];
   const OPENROUTER_MODELS = [
-    { id: "minimax/minimax-m3.1-flash:free", label: "MiniMax M3.1 Flash · 免费", tip: "编程使用榜活跃，适合代码分析和多步骤问题。" },
     { id: "nvidia/nemotron-3-ultra-550b-a55b:free", label: "Nemotron 3 Ultra · 免费", tip: "编程使用榜活跃，适合复杂推理和代码排错。" },
     { id: "cohere/north-mini-code:free", label: "North Mini Code · 免费", tip: "专门面向代码生成和软件工程的轻量模型。" },
   ];
@@ -449,6 +448,9 @@
       msg = String(body || "");
     }
     msg = String(msg).slice(0, 300);
+    if (status === 402 && currentProvider() === "openrouter") {
+      return `免费模型请求被拒绝（HTTP 402），请切换其他免费模型。${msg ? "服务商提示：" + msg : ""}`;
+    }
     return `请求失败（HTTP ${status}）${msg ? "：" + msg : ""}`;
   }
 
@@ -486,6 +488,16 @@
       if (!key) {
         reject(new Error("还没填 API key：点右上角 ⚙ 填入你的 API Key。"));
         return;
+      }
+
+      const requestBody = { ...payload, stream: true };
+      if (currentProvider() === "openrouter") {
+        if (!OPENROUTER_MODELS.some(model => model.id === payload.model)) {
+          reject(new Error("当前模型已不在免费列表中，请重新选择免费模型。"));
+          return;
+        }
+        // Enforce zero pricing even if a free promotion ends or routing changes.
+        requestBody.provider = { max_price: { prompt: 0, completion: 0, request: 0 } };
       }
 
       let lastLen = 0;
@@ -543,7 +555,7 @@
           authorization: `Bearer ${key}`,
           accept: "text/event-stream",
         },
-        data: JSON.stringify({ ...payload, stream: true }),
+        data: JSON.stringify(requestBody),
         timeout: 180_000,
         onprogress: (r) => {
           if (settled) return;

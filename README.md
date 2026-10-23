@@ -2,7 +2,7 @@
 
 Leet Astra 是一个运行在 Tampermonkey（油猴）中的用户脚本。它在 LeetCode 题目页右下角加入 AI 对话面板，读取当前题目和编辑器代码，帮助你获得提示、理解代码和排查错误。
 
-**安装即可使用，无需部署后端。** AI 对话需要配置自己的模型服务 API Key，逐行调试可直接使用。当前版本为 **3.3.2**，内置智谱 GLM 和 OpenRouter 免费模型入口，可选对接本机 LeetNote 保存笔记。
+**安装即可使用，无需部署后端。** AI 对话需要配置自己的模型服务 API Key，逐行调试可直接使用。当前版本为 **3.3.3**，内置智谱 GLM 和 OpenRouter 免费模型入口，可选对接本机 LeetNote 保存笔记。
 
 ## 目录
 
@@ -75,7 +75,7 @@ Leet Astra 是一个运行在 Tampermonkey（油猴）中的用户脚本。它�
 3. 找到原有的 **openleet · 题目 AI 助手**（更新后为 **Leet Astra**），点击名称进入编辑页面。
 4. 全选旧代码，粘贴新代码，按 **Ctrl+S** 保存。
 5. 刷新已经打开的 LeetCode 题目页面。
-6. 如需确认版本，检查脚本头部的 `@version`，本版应为 `3.3.2`。
+6. 如需确认版本，检查脚本头部的 `@version`，本版应为 `3.3.3`。
 
 只替换同一脚本的源码，配置和 API Key 通常会保留。不要为了更新先删除原脚本；删除时清理脚本数据可能丢失设置。也不要同时启用多个 Leet Astra 副本。
 
@@ -203,13 +203,14 @@ nums = [2, 7, 11, 15], target = 9
 | 供应商 | 免费模型 | 适用方向 |
 | --- | --- | --- |
 | 智谱 | GLM-4.7-Flash（默认） | 中文题解、代码解释 |
-| OpenRouter | MiniMax M3.1 Flash `:free` | 代码分析、多步骤问题 |
 | OpenRouter | Nemotron 3 Ultra `:free` | 复杂推理、排错 |
 | OpenRouter | North Mini Code `:free` | 专门面向代码生成与软件工程 |
 
-选型核验日期：**2026-10-22**。MiniMax 和 Nemotron 在 [OpenRouter 免费模型榜](https://openrouter.ai/collections/free-models) 的编程使用分类中活跃；该榜按使用量排列。North Mini Code 是其中专门面向编码的模型。模型 ID 和零输入/输出价格均通过 [官方模型目录](https://openrouter.ai/api/v1/models) 核对。智谱的 [官方公告](https://www.zhipuai.cn/zh/news/148) 确认 GLM-4.7-Flash 免费，且旧 4.5-Flash 已由它替代。
+选型核验日期：**2026-10-24**。Nemotron 3 Ultra 和 North Mini Code 的免费 ID、零输入/输出价格已通过 [官方模型目录](https://openrouter.ai/api/v1/models) 核对。智谱的 [官方公告](https://www.zhipuai.cn/zh/news/148) 确认 GLM-4.7-Flash 免费，且旧 4.5-Flash 已由它替代。
 
-OpenRouter 需要注册账户并创建自己的 API Key，OpenCode Go 的订阅和 Key 无法通用。免费服务有请求次数、速率和容量限制，具体以 [官方额度说明](https://openrouter.ai/docs/api-reference/limits) 和账户显示为准。候选列表固定在脚本中，免费模型下架或限流时会显示请求错误，请手动切换；脚本使用明确的 `:free` ID。
+OpenRouter 需要注册账户并创建自己的 API Key，OpenCode Go 的订阅和 Key 无法通用。免费服务有请求次数、速率和容量限制，具体以 [官方额度说明](https://openrouter.ai/docs/api-reference/limits) 和账户显示为准。候选列表固定在脚本中，免费模型下架或限流时会显示请求错误，请手动切换；脚本使用明确的 `:free` ID，并通过 [OpenRouter 价格上限](https://openrouter.ai/docs/guides/routing/provider-selection#max-price) 将输入、输出和单次请求价格限制为零。没有符合价格限制的线路时，请求会失败；出现 HTTP 402 时会提示切换免费模型。
+
+MiniMax M3.1 Flash 的限时免费活动已于 **2026-10-22** 结束，见 [官方模型页公告](https://openrouter.ai/minimax/minimax-m3.1-flash%3Afree)。3.3.3 已移除此选项；原先选中 MiniMax 的配置会自动切换为 Nemotron 3 Ultra 免费版，并保留 OpenRouter Key。
 
 升级时会清除插件中保存的 OpenCode Key，并将原 OpenCode 接口切换到智谱；已保存的智谱 Key、对话与笔记设置保留。旧付费模型选择自动改为免费候选。此操作影响插件本地配置，订阅续费设置仍需在供应商账户中管理。
 
@@ -412,6 +413,12 @@ git diff --check
 - 模型列表采用核验时的固定候选，服务商后续调整免费额度或下线模型时需要更新脚本。
 
 ## 版本记录
+
+### 3.3.3
+
+- 移除免费活动已结束的 MiniMax M3.1 Flash，旧选择自动迁移到 Nemotron 3 Ultra 免费版。
+- OpenRouter 请求强制输入、输出和单次请求价格上限为零，并拦截已移出免费列表的模型。
+- 收到 HTTP 402 时提示切换免费模型，保留服务商原始错误供排查。
 
 ### 3.3.2
 
