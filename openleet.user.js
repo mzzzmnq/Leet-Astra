@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Leet Astra
 // @namespace    opencode-leet
-// @version      3.2.0
+// @version      3.3.0
 // @description  在 LeetCode 题目页嵌入 AI 对话面板：分步提示 / 讲代码+复杂度 / Debug 报错 / 代码批注 / Python 知识点。纯前端，直接用你自己的 API key。
 // @author       opencode-leet
 // @match        https://leetcode.com/problems/*
@@ -588,91 +588,133 @@
 
   /* ------------------------------------------------------------------- style */
   const CSS = `
+.ocleet-panel,.ocleet-launcher{
+  color-scheme:dark;--ocleet-surface:#151923;--ocleet-raised:#1d2330;--ocleet-input:#10151f;--ocleet-code:#0b1019;
+  --ocleet-text:#e8ecf5;--ocleet-muted:#a7b2c7;--ocleet-subtle:#95a2b9;--ocleet-line:#ffffff14;--ocleet-line-strong:#ffffff26;
+  --ocleet-hover:#ffffff12;--ocleet-accent:#b5c4ff;--ocleet-accent-bg:#6883fc1a;--ocleet-accent-line:#7e9aff44;--ocleet-focus:#a8b9ff;
+  --ocleet-error:#ffc4ca;--ocleet-error-bg:#ff5f6d1a;--ocleet-error-line:#ff5f6d59;--ocleet-selected:#34436a;
+  --ocleet-changed:#b993232b;--ocleet-added:#37a77b26;--ocleet-removed:#c2575726;
+  --ocleet-shadow:0 24px 70px #0007,0 2px 8px #0003;--ocleet-overlay-shadow:0 12px 32px #0005;
+}
+.ocleet-panel[data-ocleet-theme="light"],.ocleet-launcher[data-ocleet-theme="light"]{
+  color-scheme:light;--ocleet-surface:#ffffff;--ocleet-raised:#f5f7fb;--ocleet-input:#ffffff;--ocleet-code:#f2f5fa;
+  --ocleet-text:#1e293b;--ocleet-muted:#526078;--ocleet-subtle:#62718a;--ocleet-line:#2334541c;--ocleet-line-strong:#23345433;
+  --ocleet-hover:#334e8810;--ocleet-accent:#4058b8;--ocleet-accent-bg:#536dfe0d;--ocleet-accent-line:#4f63cb40;--ocleet-focus:#5265ce;
+  --ocleet-error:#aa2840;--ocleet-error-bg:#fff0f3;--ocleet-error-line:#b32b4540;--ocleet-selected:#e0e7ff;
+  --ocleet-changed:#e9b32526;--ocleet-added:#159c7020;--ocleet-removed:#dc354526;
+  --ocleet-shadow:0 24px 70px #22355226,0 2px 8px #22355218;--ocleet-overlay-shadow:0 12px 32px #22355226;
+}
+
 .ocleet-launcher{position:fixed;right:22px;bottom:22px;z-index:2147483000;height:44px;padding:0 18px;border:none;border-radius:22px;cursor:pointer;
   background:linear-gradient(135deg,#5b7cfa,#8a5cf6);color:#fff;font:600 14px/1 -apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
   box-shadow:0 10px 26px rgba(70,90,220,.4);transition:transform .12s ease,filter .12s ease}
 .ocleet-launcher:hover{filter:brightness(1.08);transform:translateY(-1px)}
 .ocleet-panel{position:fixed;right:12px;bottom:78px;z-index:2147483000;width:460px;max-width:calc(100% - 24px);height:min(82vh,820px);display:flex;flex-direction:column;
-  background:#12141c;color:#e7e9f0;border:1px solid rgba(255,255,255,.1);border-radius:16px;overflow:hidden;
-  box-shadow:0 22px 70px rgba(0,0,0,.55);font:13px/1.6 -apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif}
+  background:var(--ocleet-surface);color:var(--ocleet-text);border:1px solid var(--ocleet-line);border-radius:16px;overflow:hidden;
+  box-shadow:var(--ocleet-shadow);font:13px/1.6 -apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif}
 .ocleet-panel[hidden]{display:none}
 .ocleet-panel,.ocleet-panel *{box-sizing:border-box}
 .ocleet-panel> *:not(.ocleet-messages){flex-shrink:0}
-.ocleet-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02);cursor:grab;touch-action:none;user-select:none}
+.ocleet-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--ocleet-line);background:var(--ocleet-raised);cursor:grab;touch-action:none;user-select:none}
 .ocleet-head.ocleet-dragging{cursor:grabbing}
 .ocleet-brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px}
 .ocleet-dot{width:8px;height:8px;border-radius:50%;background:#8b90a3}
 .ocleet-dot.ok{background:#37d67a;box-shadow:0 0 0 3px rgba(55,214,122,.18)}
 .ocleet-dot.err{background:#ff5f6d;box-shadow:0 0 0 3px rgba(255,95,109,.18)}
 .ocleet-actions{display:flex;gap:4px}
-.ocleet-icon{background:transparent;border:none;color:#9aa0b4;cursor:pointer;font-size:15px;padding:4px 7px;border-radius:8px}
-.ocleet-icon:hover{background:rgba(255,255,255,.08);color:#fff}
-.ocleet-settings{position:absolute;inset:48px 8px 8px;z-index:2;padding:14px;border:1px solid rgba(255,255,255,.14);border-radius:12px;background:#191c28;overflow-y:auto;display:flex;flex-direction:column;gap:12px;box-shadow:0 12px 32px #0008}
+.ocleet-icon{background:transparent;border:none;color:var(--ocleet-muted);cursor:pointer;font-size:15px;padding:4px 7px;border-radius:8px}
+.ocleet-icon:hover{background:var(--ocleet-hover);color:var(--ocleet-text)}
+.ocleet-settings{position:absolute;inset:48px 8px 8px;z-index:2;padding:14px;border:1px solid var(--ocleet-line-strong);border-radius:12px;background:var(--ocleet-raised);overflow-y:auto;display:flex;flex-direction:column;gap:12px;box-shadow:var(--ocleet-overlay-shadow)}
 .ocleet-settings[hidden]{display:none}
-.ocleet-field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#9aa0b4}
-.ocleet-field input,.ocleet-field select{background:#0c0e15;border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#e7e9f0;padding:6px 8px;font:inherit;font-size:12.5px}
-.ocleet-check{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#c3c7d4}
+.ocleet-field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ocleet-muted)}
+.ocleet-field input,.ocleet-field select{background:var(--ocleet-input);border:1px solid var(--ocleet-hover);border-radius:8px;color:var(--ocleet-text);padding:6px 8px;font:inherit;font-size:12.5px}
+.ocleet-check{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ocleet-muted)}
 .ocleet-mode-row{display:flex;align-items:center;gap:10px;padding:10px 12px 6px}
-.ocleet-mode-row label{font-size:12px;color:#9aa0b4;flex-shrink:0}
-.ocleet-mode-select{min-width:0;flex:1;background:#202438;color:#e7e9f0;border:1px solid #454d73;border-radius:8px;padding:7px 9px;font:inherit;font-size:13px}
-.ocleet-context{margin:0 12px;border-bottom:1px solid #ffffff12;padding-bottom:8px;max-height:30vh;overflow-y:auto}
-.ocleet-context summary,.ocleet-note-tools summary{cursor:pointer;color:#aeb3c4;font-size:12px;padding:5px 0}
+.ocleet-mode-row label{font-size:12px;color:var(--ocleet-muted);flex-shrink:0}
+.ocleet-mode-select{min-width:0;flex:1;background:var(--ocleet-raised);color:var(--ocleet-text);border:1px solid var(--ocleet-line-strong);border-radius:8px;padding:7px 9px;font:inherit;font-size:13px}
+.ocleet-context{margin:0 12px;border-bottom:1px solid var(--ocleet-line);padding-bottom:8px;max-height:30vh;overflow-y:auto}
+.ocleet-context summary,.ocleet-note-tools summary{cursor:pointer;color:var(--ocleet-muted);font-size:12px;padding:5px 0}
 .ocleet-context .ocleet-problem{margin:6px 0 0}
-.ocleet-font-controls{display:flex;align-items:center;border:1px solid #ffffff18;border-radius:8px;margin-right:5px}
+.ocleet-font-controls{display:flex;align-items:center;border:1px solid var(--ocleet-line);border-radius:8px;margin-right:5px}
 .ocleet-font-controls button{font-size:12px;min-width:28px;min-height:28px}
-.ocleet-font-controls output{font-size:11px;color:#b9bed0;min-width:28px;text-align:center}
+.ocleet-font-controls output{font-size:11px;color:var(--ocleet-muted);min-width:28px;text-align:center}
 .ocleet-icon:disabled{opacity:.35;cursor:default}
-.ocleet-panel :is(button,select,summary,input,textarea):focus-visible{outline:2px solid #9b90ff;outline-offset:2px}
+.ocleet-panel :is(button,select,summary,input,textarea):focus-visible{outline:2px solid var(--ocleet-focus);outline-offset:2px}
 .ocleet-settings-title{display:flex;justify-content:space-between;align-items:center;font-weight:600}
 .ocleet-note-tools{position:relative}
-.ocleet-note-menu{position:absolute;bottom:32px;left:0;z-index:1;display:flex;flex-direction:column;gap:8px;padding:10px;min-width:150px;background:#202330;border:1px solid #ffffff25;border-radius:10px;box-shadow:0 8px 25px #0006}
-.ocleet-problem{margin:9px 12px 0;padding:7px 10px;border-radius:9px;background:rgba(91,124,250,.1);border:1px solid rgba(91,124,250,.25);font-size:12px;color:#c9cfe4;display:flex;gap:6px;align-items:center}
+.ocleet-note-menu{position:absolute;bottom:32px;left:0;z-index:1;display:flex;flex-direction:column;gap:8px;padding:10px;min-width:150px;background:var(--ocleet-raised);border:1px solid var(--ocleet-line-strong);border-radius:10px;box-shadow:var(--ocleet-overlay-shadow)}
+.ocleet-problem{margin:9px 12px 0;padding:7px 10px;border-radius:9px;background:var(--ocleet-accent-bg);border:1px solid var(--ocleet-accent-line);font-size:12px;color:var(--ocleet-accent);display:flex;gap:6px;align-items:center}
 .ocleet-problem[hidden]{display:none}
-.ocleet-diff{font-size:11px;padding:1px 6px;border-radius:6px;background:rgba(255,255,255,.1)}
+.ocleet-diff{font-size:11px;padding:1px 6px;border-radius:6px;background:var(--ocleet-line)}
 .ocleet-messages{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:12px;display:flex;flex-direction:column;gap:12px;font-size:var(--ocleet-font-size,14px)}
 .ocleet-messages>*{flex-shrink:0}
 .ocleet-msg{max-width:100%;padding:9px 11px;border-radius:12px;white-space:normal;word-break:break-word}
 .ocleet-msg.user{align-self:flex-end;background:linear-gradient(135deg,#5b7cfa,#7b5cf5);color:#fff;border-bottom-right-radius:4px}
-.ocleet-msg.assistant{align-self:flex-start;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.08);border-bottom-left-radius:4px}
-.ocleet-msg.error{align-self:flex-start;background:rgba(255,95,109,.12);border:1px solid rgba(255,95,109,.35);color:#ffc4ca}
+.ocleet-msg.assistant{align-self:flex-start;background:var(--ocleet-raised);border:1px solid var(--ocleet-line);border-bottom-left-radius:4px}
+.ocleet-msg.error{align-self:flex-start;background:var(--ocleet-error-bg);border:1px solid var(--ocleet-error-line);color:var(--ocleet-error)}
 .ocleet-msg p{margin:0 0 7px}.ocleet-msg p:last-child{margin-bottom:0}
 .ocleet-msg ul{margin:4px 0 7px;padding-left:20px}
 .ocleet-msg h2,.ocleet-msg h3,.ocleet-msg h4{margin:8px 0 5px;font-size:1em}
-.ocleet-ic{background:rgba(255,255,255,.12);padding:1px 5px;border-radius:5px;font-family:ui-monospace,Consolas,monospace;font-size:.95em}
-.ocleet-pre{position:relative;background:#0a0b11;border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:9px 10px;overflow-x:auto;margin:5px 0}
+.ocleet-ic{background:var(--ocleet-hover);padding:1px 5px;border-radius:5px;font-family:ui-monospace,Consolas,monospace;font-size:.95em}
+.ocleet-pre{position:relative;background:var(--ocleet-code);border:1px solid var(--ocleet-line);border-radius:9px;padding:9px 10px;overflow-x:auto;margin:5px 0}
 .ocleet-pre code{font-family:ui-monospace,Consolas,monospace;font-size:var(--ocleet-font-size,14px);white-space:pre}
-.ocleet-copy{position:absolute;top:5px;right:5px;background:rgba(255,255,255,.1);border:none;color:#c3c7d4;border-radius:6px;font-size:11px;padding:2px 7px;cursor:pointer}
-.ocleet-copy:hover{background:rgba(255,255,255,.2);color:#fff}
-.ocleet-reason{margin-bottom:7px;border-left:2px solid rgba(255,255,255,.18);padding-left:8px}
-.ocleet-reason summary{cursor:pointer;color:#8f95a8;font-size:11.5px;outline:none}
-.ocleet-reason-body{color:#8f95a8;font-size:1em;white-space:pre-wrap;margin-top:5px;max-height:200px;overflow:auto}
-.ocleet-muted{color:#8f95a8}
-.ocleet-composer{border-top:1px solid rgba(255,255,255,.08);padding:10px 12px 12px;background:rgba(255,255,255,.02)}
-.ocleet-composer textarea{display:block;width:100%;resize:vertical;min-height:52px;max-height:min(160px,22vh);background:#0c0e15;border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#e7e9f0;padding:9px 10px;font:inherit;font-size:var(--ocleet-font-size,14px)}
-.ocleet-composer textarea:focus{outline:none;border-color:rgba(138,120,255,.6)}
+.ocleet-copy{position:absolute;top:5px;right:5px;background:var(--ocleet-line);border:none;color:var(--ocleet-muted);border-radius:6px;font-size:11px;padding:2px 7px;cursor:pointer}
+.ocleet-copy:hover{background:var(--ocleet-hover);color:var(--ocleet-text)}
+.ocleet-reason{margin-bottom:7px;border-left:2px solid var(--ocleet-line-strong);padding-left:8px}
+.ocleet-reason summary{cursor:pointer;color:var(--ocleet-subtle);font-size:11.5px;outline:none}
+.ocleet-reason-body{color:var(--ocleet-subtle);font-size:1em;white-space:pre-wrap;margin-top:5px;max-height:200px;overflow:auto}
+.ocleet-muted{color:var(--ocleet-subtle)}
+.ocleet-composer{border-top:1px solid var(--ocleet-line);padding:10px 12px 12px;background:var(--ocleet-raised)}
+.ocleet-composer textarea{display:block;width:100%;resize:vertical;min-height:52px;max-height:min(160px,22vh);background:var(--ocleet-input);border:1px solid var(--ocleet-hover);border-radius:10px;color:var(--ocleet-text);padding:9px 10px;font:inherit;font-size:var(--ocleet-font-size,14px)}
+.ocleet-composer textarea:focus{outline:none;border-color:var(--ocleet-focus)}
 .ocleet-composer-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
-.ocleet-hint{font-size:11.5px;color:#a4aec4;white-space:normal;line-height:1.5}
+.ocleet-hint{font-size:11.5px;color:var(--ocleet-muted);white-space:normal;line-height:1.5}
 .ocleet-btns{display:flex;gap:6px;flex-shrink:0}
-.ocleet-btn{border-radius:9px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#dfe2ec;padding:8px 11px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;line-height:1.3}
-.ocleet-btn:hover{background:rgba(255,255,255,.12)}
+.ocleet-btn{border-radius:9px;border:1px solid var(--ocleet-line-strong);background:var(--ocleet-raised);color:var(--ocleet-text);padding:8px 11px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;line-height:1.3}
+.ocleet-btn:hover{background:var(--ocleet-hover)}
 .ocleet-btn:disabled{opacity:.5;cursor:not-allowed}
 .ocleet-btn.primary{background:linear-gradient(135deg,#5b7cfa,#8a5cf6);border-color:transparent;color:#fff}
 .ocleet-btn.primary[disabled]{opacity:.55;cursor:default}
 .ocleet-cursor{display:inline-block;width:7px;height:14px;background:#8a5cf6;vertical-align:-2px;animation:ocleet-blink 1s steps(2) infinite}
 .ocleet-work-tools{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding:4px 12px 10px}
 .ocleet-work-tools .ocleet-btn{padding:9px 4px}
-.ocleet-model-bar{display:flex;align-items:center;gap:8px;padding:10px 12px 0;color:#929db4;font-size:11px}
-.ocleet-model-bar button{flex:1;min-width:0;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;background:transparent;color:#c9d5ff;font:inherit;cursor:pointer;padding:3px}
-.ocleet-section-label{font-size:11px;font-weight:700;color:#aabaff;letter-spacing:.08em;border-top:1px solid #ffffff12;padding-top:10px}
-.ocleet-provider-info{border:1px solid #637bba38;border-radius:10px;padding:10px;background:#718deb0a;font-size:12px;color:#b3bdd2}
+.ocleet-model-bar{display:flex;align-items:center;gap:8px;padding:10px 12px 0;color:var(--ocleet-subtle);font-size:11px}
+.ocleet-model-bar button{flex:1;min-width:0;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;background:transparent;color:var(--ocleet-accent);font:inherit;cursor:pointer;padding:3px}
+.ocleet-section-label{font-size:11px;font-weight:700;color:var(--ocleet-accent);letter-spacing:.08em;border-top:1px solid var(--ocleet-line);padding-top:10px}
+.ocleet-provider-info{border:1px solid var(--ocleet-accent-line);border-radius:10px;padding:10px;background:var(--ocleet-accent-bg);font-size:12px;color:var(--ocleet-muted)}
 .ocleet-provider-info p{margin:0 0 6px;line-height:1.6}
-.ocleet-provider-info a{color:#a9bdff}
-.ocleet-settings-notes{border-top:1px solid #ffffff12;padding-top:10px}
-.ocleet-settings-notes summary{cursor:pointer;color:#c7cede;font-size:12px}
+.ocleet-provider-info a{color:var(--ocleet-accent)}
+.ocleet-settings-notes{border-top:1px solid var(--ocleet-line);padding-top:10px}
+.ocleet-settings-notes summary{cursor:pointer;color:var(--ocleet-muted);font-size:12px}
 .ocleet-settings-notes .ocleet-field,.ocleet-settings-notes .ocleet-check{margin-top:10px}
-.ocleet-field input[readonly]{color:#818ba0}
+.ocleet-field input[readonly]{color:var(--ocleet-subtle)}
 @keyframes ocleet-blink{0%,50%{opacity:1}50.01%,100%{opacity:0}}
 @media(max-height:600px){.ocleet-panel{height:calc(100dvh - 24px);bottom:12px}.ocleet-composer{padding:8px 12px}.ocleet-mode-row{padding-top:6px}}
+
+/* Motion stays on paint/compositing properties, so dragging and resizing remain direct. */
+.ocleet-panel{transition:opacity .2s ease,background-color .2s ease,color .2s ease,border-color .2s ease,box-shadow .2s ease,display .2s allow-discrete}
+.ocleet-panel[hidden]{opacity:0;pointer-events:none}
+.ocleet-panel :is(button,input,textarea,select,summary){transition:background-color .16s ease,color .16s ease,border-color .16s ease,box-shadow .16s ease}
+.ocleet-launcher,.ocleet-panel .ocleet-btn,.ocleet-panel .ocleet-icon{transition:transform .16s ease,background-color .16s ease,color .16s ease,border-color .16s ease,box-shadow .16s ease,filter .16s ease}
+.ocleet-launcher:active,.ocleet-btn:active:not(:disabled),.ocleet-icon:active:not(:disabled){transform:scale(.97)}
+.ocleet-panel :is(input,textarea,select){accent-color:#6277ed}
+.ocleet-panel ::placeholder{color:var(--ocleet-subtle);opacity:1}
+.ocleet-panel :is(.ocleet-settings,.ocleet-note-menu,.ocleet-debugger){transition:opacity .18s ease,translate .18s ease,background-color .2s ease,display .18s allow-discrete}
+.ocleet-settings[hidden],.ocleet-debugger[hidden]{opacity:0;translate:0 6px;pointer-events:none}
+.ocleet-msg{animation:ocleet-message-in .2s ease-out}
+.ocleet-panel :is(.ocleet-messages,.ocleet-settings,.ocleet-debug-code,.ocleet-debug-inspect){scrollbar-width:thin;scrollbar-color:var(--ocleet-line-strong) transparent}
+.ocleet-panel a{color:var(--ocleet-accent)}
+.ocleet-msg.user a{color:inherit}
+@starting-style{
+  .ocleet-panel:not([hidden]){opacity:0}
+  .ocleet-panel .ocleet-settings:not([hidden]),.ocleet-panel .ocleet-debugger:not([hidden]){opacity:0;translate:0 6px}
+  .ocleet-note-tools[open] .ocleet-note-menu{opacity:0;translate:0 4px}
+}
+@keyframes ocleet-message-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){
+  .ocleet-launcher,.ocleet-panel,.ocleet-panel *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+  .ocleet-launcher:hover,.ocleet-launcher:active,.ocleet-panel button:active{transform:none!important}
+}
 `;
 
   /* ---------------------------------------------------------------------- UI */
@@ -1719,28 +1761,28 @@ function debugVariableChanges(events, index) {
 function installPythonDebugger() {
   addStyle(`
 .ocleet-panel.ocleet-debug-open{width:960px;height:88vh;max-height:calc(100vh - 24px)}
-.ocleet-debugger{position:absolute;inset:49px 0 0;z-index:3;background:#12141c;display:flex;flex-direction:column;padding:12px;gap:10px;overflow:auto;font-size:var(--ocleet-font-size,14px)}
+.ocleet-debugger{position:absolute;inset:49px 0 0;z-index:3;background:var(--ocleet-surface);display:flex;flex-direction:column;padding:12px;gap:10px;overflow:auto;font-size:var(--ocleet-font-size,14px)}
 .ocleet-debugger[hidden]{display:none}
 .ocleet-debug-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .ocleet-debug-toolbar strong{margin-right:auto}
-.ocleet-debugger label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#b9bed0}
-.ocleet-debugger :is(select,input,textarea){min-width:0;border:1px solid #ffffff26;border-radius:7px;background:#0b0e16;color:#e7e9f0;padding:7px;font:inherit}
+.ocleet-debugger label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ocleet-muted)}
+.ocleet-debugger :is(select,input,textarea){min-width:0;border:1px solid var(--ocleet-line-strong);border-radius:7px;background:var(--ocleet-input);color:var(--ocleet-text);padding:7px;font:inherit}
 .ocleet-debugger textarea{width:100%;resize:vertical;min-height:62px;max-height:120px;font-family:Consolas,monospace}
 .ocleet-debug-case{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.ocleet-debug-status{font-size:12px;color:#c0c8e0;white-space:pre-wrap;overflow-wrap:anywhere}
+.ocleet-debug-status{font-size:12px;color:var(--ocleet-muted);white-space:pre-wrap;overflow-wrap:anywhere}
 .ocleet-debug-workspace{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:10px;flex:1;min-height:210px}
-.ocleet-debug-code{overflow:auto;border:1px solid #ffffff1a;border-radius:8px;background:#0a0d14;min-width:0;min-height:0;max-height:48vh}
-.ocleet-debug-line{display:block;text-align:left;border:0;border-bottom:1px solid #ffffff05;border-radius:0;background:transparent;color:#cbd3e6;padding:3px 8px;white-space:pre;min-width:100%;width:max-content;font:var(--ocleet-font-size,14px)/1.6 Consolas,monospace;cursor:pointer}
-.ocleet-debug-line span{display:inline-block;width:3em;color:#78839e;user-select:none}
-.ocleet-debug-line.active{background:#394470;color:#fff}
-.ocleet-debug-line.visited span{color:#99aaff}
+.ocleet-debug-code{overflow:auto;border:1px solid var(--ocleet-line);border-radius:8px;background:var(--ocleet-code);min-width:0;min-height:0;max-height:48vh}
+.ocleet-debug-line{display:block;text-align:left;border:0;border-bottom:1px solid var(--ocleet-line);border-radius:0;background:transparent;color:var(--ocleet-text);padding:3px 8px;white-space:pre;min-width:100%;width:max-content;font:var(--ocleet-font-size,14px)/1.6 Consolas,monospace;cursor:pointer}
+.ocleet-debug-line span{display:inline-block;width:3em;color:var(--ocleet-subtle);user-select:none}
+.ocleet-debug-line.active{background:var(--ocleet-selected);color:var(--ocleet-text)}
+.ocleet-debug-line.visited span{color:var(--ocleet-accent)}
 .ocleet-debug-inspect{overflow:auto;min-width:0;max-height:48vh}
-.ocleet-debug-vars{margin:8px 0;border-top:1px solid #ffffff20}
-.ocleet-debug-vars div{display:grid;grid-template-columns:minmax(60px,auto) 1fr;gap:10px;padding:6px 0;border-bottom:1px solid #ffffff12}
-.ocleet-debug-vars dt{color:#9baeff;font-family:Consolas,monospace}
+.ocleet-debug-vars{margin:8px 0;border-top:1px solid var(--ocleet-line)}
+.ocleet-debug-vars div{display:grid;grid-template-columns:minmax(60px,auto) 1fr;gap:10px;padding:6px 0;border-bottom:1px solid var(--ocleet-line)}
+.ocleet-debug-vars dt{color:var(--ocleet-accent);font-family:Consolas,monospace}
 .ocleet-debug-vars dd{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-family:Consolas,monospace}
-.ocleet-debug-vars .changed{background:#b9932320}.ocleet-debug-vars .added{background:#37a77b20}.ocleet-debug-vars .removed{background:#c2575720}
-.ocleet-debug-result{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:110px;overflow:auto;margin:0;color:#bec9df}
+.ocleet-debug-vars .changed{background:var(--ocleet-changed)}.ocleet-debug-vars .added{background:var(--ocleet-added)}.ocleet-debug-vars .removed{background:var(--ocleet-removed)}
+.ocleet-debug-result{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:110px;overflow:auto;margin:0;color:var(--ocleet-muted)}
 @media(max-width:650px){.ocleet-debug-workspace{grid-template-columns:1fr}.ocleet-debug-code,.ocleet-debug-inspect{max-height:32vh}.ocleet-debug-case{grid-template-columns:1fr}}
 `);
   const view = document.createElement('section');
@@ -1934,6 +1976,78 @@ function installPythonDebugger() {
   return { onRouteChange };
 }
 
+// Follow explicit LeetCode theme markers first, then the browser's preference.
+function installThemeSync(panel, launcher) {
+  const targets = [panel, launcher].filter(Boolean);
+  const media = window.matchMedia('(prefers-color-scheme: dark)');
+  let active = false;
+  const themeValue = value => /^(light|dark)$/.test(String(value || '').trim().toLowerCase())
+    ? String(value).trim().toLowerCase() : null;
+
+  function readTheme() {
+    const roots = [document.documentElement, document.body].filter(Boolean);
+    for (const root of roots) {
+      for (const attribute of ['data-theme', 'data-color-mode']) {
+        const theme = themeValue(root.getAttribute(attribute));
+        if (theme) return theme;
+      }
+      const dark = root.classList.contains('dark');
+      const light = root.classList.contains('light');
+      if (dark !== light) return dark ? 'dark' : 'light';
+    }
+    // A two-value color-scheme advertises support; it does not select a theme.
+    for (const root of roots) {
+      const theme = themeValue(root.style.colorScheme);
+      if (theme) return theme;
+    }
+    for (const root of roots) {
+      const theme = themeValue(window.getComputedStyle(root).colorScheme);
+      if (theme) return theme;
+    }
+    return media.matches ? 'dark' : 'light';
+  }
+
+  function sync() {
+    if (!active) return;
+    const theme = readTheme();
+    for (const target of targets) {
+      if (target.getAttribute('data-ocleet-theme') !== theme) {
+        target.setAttribute('data-ocleet-theme', theme);
+      }
+    }
+  }
+
+  const observer = new MutationObserver(sync);
+  function resume() {
+    if (active) return;
+    active = true;
+    for (const root of [document.documentElement, document.body].filter(Boolean)) {
+      observer.observe(root, {
+        attributes: true,
+        attributeFilter: ['class', 'data-theme', 'data-color-mode', 'style'],
+      });
+    }
+    if (media.addEventListener) media.addEventListener('change', sync);
+    else media.addListener(sync);
+    sync();
+  }
+  function pause() {
+    active = false;
+    observer.disconnect();
+    if (media.removeEventListener) media.removeEventListener('change', sync);
+    else media.removeListener(sync);
+  }
+  window.addEventListener('pagehide', pause);
+  window.addEventListener('pageshow', resume);
+  resume();
+  return function dispose() {
+    pause();
+    window.removeEventListener('pagehide', pause);
+    window.removeEventListener('pageshow', resume);
+  };
+}
+
+  installThemeSync(panel, launcher);
   const pythonDebugger = installPythonDebugger();
   // END GENERATED DEBUGGER
 })();

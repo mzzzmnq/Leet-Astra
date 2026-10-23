@@ -9,6 +9,8 @@ const block = [
   read('debugger/testcase-reader.js'),
   read('debugger/worker.js'),
   read('debugger/ui.js'),
+  read('ui/theme.js'),
+  '  installThemeSync(panel, launcher);',
   '  const pythonDebugger = installPythonDebugger();',
   '  // END GENERATED DEBUGGER',
 ].join('\n');

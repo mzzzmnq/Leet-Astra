@@ -20,28 +20,28 @@ function debugVariableChanges(events, index) {
 function installPythonDebugger() {
   addStyle(`
 .ocleet-panel.ocleet-debug-open{width:960px;height:88vh;max-height:calc(100vh - 24px)}
-.ocleet-debugger{position:absolute;inset:49px 0 0;z-index:3;background:#12141c;display:flex;flex-direction:column;padding:12px;gap:10px;overflow:auto;font-size:var(--ocleet-font-size,14px)}
+.ocleet-debugger{position:absolute;inset:49px 0 0;z-index:3;background:var(--ocleet-surface);display:flex;flex-direction:column;padding:12px;gap:10px;overflow:auto;font-size:var(--ocleet-font-size,14px)}
 .ocleet-debugger[hidden]{display:none}
 .ocleet-debug-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .ocleet-debug-toolbar strong{margin-right:auto}
-.ocleet-debugger label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#b9bed0}
-.ocleet-debugger :is(select,input,textarea){min-width:0;border:1px solid #ffffff26;border-radius:7px;background:#0b0e16;color:#e7e9f0;padding:7px;font:inherit}
+.ocleet-debugger label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ocleet-muted)}
+.ocleet-debugger :is(select,input,textarea){min-width:0;border:1px solid var(--ocleet-line-strong);border-radius:7px;background:var(--ocleet-input);color:var(--ocleet-text);padding:7px;font:inherit}
 .ocleet-debugger textarea{width:100%;resize:vertical;min-height:62px;max-height:120px;font-family:Consolas,monospace}
 .ocleet-debug-case{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.ocleet-debug-status{font-size:12px;color:#c0c8e0;white-space:pre-wrap;overflow-wrap:anywhere}
+.ocleet-debug-status{font-size:12px;color:var(--ocleet-muted);white-space:pre-wrap;overflow-wrap:anywhere}
 .ocleet-debug-workspace{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:10px;flex:1;min-height:210px}
-.ocleet-debug-code{overflow:auto;border:1px solid #ffffff1a;border-radius:8px;background:#0a0d14;min-width:0;min-height:0;max-height:48vh}
-.ocleet-debug-line{display:block;text-align:left;border:0;border-bottom:1px solid #ffffff05;border-radius:0;background:transparent;color:#cbd3e6;padding:3px 8px;white-space:pre;min-width:100%;width:max-content;font:var(--ocleet-font-size,14px)/1.6 Consolas,monospace;cursor:pointer}
-.ocleet-debug-line span{display:inline-block;width:3em;color:#78839e;user-select:none}
-.ocleet-debug-line.active{background:#394470;color:#fff}
-.ocleet-debug-line.visited span{color:#99aaff}
+.ocleet-debug-code{overflow:auto;border:1px solid var(--ocleet-line);border-radius:8px;background:var(--ocleet-code);min-width:0;min-height:0;max-height:48vh}
+.ocleet-debug-line{display:block;text-align:left;border:0;border-bottom:1px solid var(--ocleet-line);border-radius:0;background:transparent;color:var(--ocleet-text);padding:3px 8px;white-space:pre;min-width:100%;width:max-content;font:var(--ocleet-font-size,14px)/1.6 Consolas,monospace;cursor:pointer}
+.ocleet-debug-line span{display:inline-block;width:3em;color:var(--ocleet-subtle);user-select:none}
+.ocleet-debug-line.active{background:var(--ocleet-selected);color:var(--ocleet-text)}
+.ocleet-debug-line.visited span{color:var(--ocleet-accent)}
 .ocleet-debug-inspect{overflow:auto;min-width:0;max-height:48vh}
-.ocleet-debug-vars{margin:8px 0;border-top:1px solid #ffffff20}
-.ocleet-debug-vars div{display:grid;grid-template-columns:minmax(60px,auto) 1fr;gap:10px;padding:6px 0;border-bottom:1px solid #ffffff12}
-.ocleet-debug-vars dt{color:#9baeff;font-family:Consolas,monospace}
+.ocleet-debug-vars{margin:8px 0;border-top:1px solid var(--ocleet-line)}
+.ocleet-debug-vars div{display:grid;grid-template-columns:minmax(60px,auto) 1fr;gap:10px;padding:6px 0;border-bottom:1px solid var(--ocleet-line)}
+.ocleet-debug-vars dt{color:var(--ocleet-accent);font-family:Consolas,monospace}
 .ocleet-debug-vars dd{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-family:Consolas,monospace}
-.ocleet-debug-vars .changed{background:#b9932320}.ocleet-debug-vars .added{background:#37a77b20}.ocleet-debug-vars .removed{background:#c2575720}
-.ocleet-debug-result{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:110px;overflow:auto;margin:0;color:#bec9df}
+.ocleet-debug-vars .changed{background:var(--ocleet-changed)}.ocleet-debug-vars .added{background:var(--ocleet-added)}.ocleet-debug-vars .removed{background:var(--ocleet-removed)}
+.ocleet-debug-result{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:110px;overflow:auto;margin:0;color:var(--ocleet-muted)}
 @media(max-width:650px){.ocleet-debug-workspace{grid-template-columns:1fr}.ocleet-debug-code,.ocleet-debug-inspect{max-height:32vh}.ocleet-debug-case{grid-template-columns:1fr}}
 `);
   const view = document.createElement('section');

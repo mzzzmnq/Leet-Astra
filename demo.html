@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="light">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -17,6 +17,14 @@
       .tags { display: flex; gap: 8px; margin: 10px 0 16px; flex-wrap: wrap; }
       .tag { font-size: 12px; background: #eef0f5; color: #4b5563; border-radius: 999px; padding: 3px 10px; text-decoration: none; }
       .desc p { margin: 8px 0; font-size: 14px; color: #333a45; }
+      html.light{color-scheme:light} html.dark{color-scheme:dark}
+      html.dark body{background:#10131b;color:#dce3f0}
+      html.dark .card{background:#1b2130;border-color:#354052}
+      html.dark .desc p{color:#dce3f0}
+      html.dark .tag{background:#2d3649;color:#c9d6f0}
+      .demo-theme{margin-top:10px;display:flex;gap:10px;align-items:center}
+      .demo-theme select{padding:6px 10px;border-radius:8px}
+      @media(prefers-color-scheme:dark){html:not(.light):not(.dark) body{background:#10131b;color:#dce3f0}html:not(.light):not(.dark) .card{background:#1b2130;border-color:#354052}html:not(.light):not(.dark) .desc p{color:#dce3f0}}
     </style>
   </head>
   <body>
@@ -30,6 +38,7 @@
           必须以带 <code>?ocleet=1</code> 的地址打开；真实使用时不需要这个页面。
           Python 逐行调试执行真实代码，首次使用需要联网下载 Python 环境。
         </p>
+        <label class="demo-theme">页面主题<select id="demo-theme" aria-label="页面主题"><option value="light">浅色</option><option value="dark">深色</option><option value="system">跟随系统</option></select></label>
       </div>
 
       <div class="card">
@@ -57,6 +66,10 @@
     </div>
 
     <script>
+      document.getElementById('demo-theme').addEventListener('change', event => {
+        document.documentElement.classList.remove('light', 'dark');
+        if (event.target.value !== 'system') document.documentElement.classList.add(event.target.value);
+      });
       // ---- fake Monaco ----
       const demoCode = document.getElementById("demo-code");
       demoCode.value = "class Solution:\n    def twoSum(self, nums: List[int], target: int) -> List[int]:\n        seen = {}\n        for i, num in enumerate(nums):\n            need = target - num\n            if need in seen:\n                return [seen[need], i]\n            seen[num] = i\n        return []";
