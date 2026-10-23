@@ -7,7 +7,7 @@ const source = fs.readFileSync(path.join(__dirname, '../ui/motion.js'), 'utf8');
 
 function harness({ hidden = true, reduced = false, animate = true, ...options } = {}) {
   const events = [], animations = [], attributes = {};
-  const style = { opacity: '1', transform: 'none' };
+  const style = { opacity: '1' };
   const element = {
     hidden, inert: false,
     setAttribute(name, value) { attributes[name] = value; },
@@ -57,16 +57,16 @@ test('initial hidden state disables interaction without starting an animation', 
 });
 
 test('opening restores layout before animating and removes its fill on completion', () => {
-  const h = harness({ offset: 18, duration: 300 });
+  const h = harness({ duration: 500 });
   assert.equal(h.motion.toggle(), true);
   assert.equal(h.motion.isVisible(), true);
   assert.deepEqual(h.events, ['beforeShow', 'animate']);
   const animation = h.animations[0];
   assert.deepEqual(plain(animation.frames), [
-    { opacity: '0', transform: 'translateY(18px)' },
-    { opacity: '1', transform: 'translateY(0px)' },
+    { opacity: '0' },
+    { opacity: '1' },
   ]);
-  assert.equal(animation.settings.duration, 300);
+  assert.equal(animation.settings.duration, 500);
   animation.complete();
   assert.equal(animation.cancelled, true);
   assert.equal(h.element.hidden, false);
@@ -82,7 +82,7 @@ test('closing blocks interaction immediately and hides only after the exit compl
   assert.equal(h.element.inert, true);
   assert.equal(h.attributes['aria-hidden'], 'true');
   assert.deepEqual(h.events, ['animate']);
-  assert.equal(h.animations[0].settings.duration, 200);
+  assert.equal(h.animations[0].settings.duration, 320);
   h.animations[0].complete();
   assert.equal(h.element.hidden, true);
   assert.deepEqual(h.events, ['animate', 'cancel', 'afterHide']);
@@ -93,7 +93,6 @@ test('reopening during exit continues from the current frame and ignores stale c
   h.motion.setVisible(false);
   const exit = h.animations[0], staleCompletion = exit.onfinish;
   h.style.opacity = '0.44';
-  h.style.transform = 'matrix(1, 0, 0, 1, 0, 6)';
   h.motion.toggle();
   assert.equal(exit.cancelled, true);
   assert.equal(h.element.inert, false);
@@ -111,7 +110,6 @@ test('closing during entrance preserves its current frame and the final intended
   h.motion.setVisible(true);
   const entrance = h.animations[0], staleCompletion = entrance.onfinish;
   h.style.opacity = '0.3';
-  h.style.transform = 'matrix(1, 0, 0, 1, 0, 10)';
   h.motion.toggle();
   assert.deepEqual(plain(h.animations[1].frames[0]), h.style);
   staleCompletion();
@@ -122,7 +120,7 @@ test('closing during entrance preserves its current frame and the final intended
   assert.equal(h.events.filter(event => event === 'afterHide').length, 1);
 });
 
-test('finish settles entrance before dragging and clears the active transform effect', () => {
+test('finish settles entrance before dragging and clears the active opacity effect', () => {
   const h = harness();
   h.motion.setVisible(true);
   const animation = h.animations[0], staleCompletion = animation.onfinish;

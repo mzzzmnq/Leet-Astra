@@ -59,7 +59,7 @@ function installPythonDebugger() {
     <div class="ocleet-debug-workspace"><div class="ocleet-debug-code" data-debug="code" aria-label="点击代码行查看执行状态"></div><div class="ocleet-debug-inspect"><div data-debug="position" class="ocleet-debug-status">尚未运行</div><dl class="ocleet-debug-vars" data-debug="vars"></dl><pre class="ocleet-debug-result" data-debug="result"></pre></div></div>`;
   panel.appendChild(view);
   const visibility = createViewMotion(view, {
-    offset: 10, duration: 240,
+    duration: 320,
     beforeShow() { panelVisibility.finish(); panel.classList.add('ocleet-debug-open'); restorePanelPosition(); },
     afterHide() { panel.classList.remove('ocleet-debug-open'); restorePanelPosition(); },
   });

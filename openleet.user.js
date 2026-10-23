@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Leet Astra
 // @namespace    opencode-leet
-// @version      3.3.1
+// @version      3.3.2
 // @description  在 LeetCode 题目页嵌入 AI 对话面板：分步提示 / 讲代码+复杂度 / Debug 报错 / 代码批注 / Python 知识点。纯前端，直接用你自己的 API key。
 // @author       opencode-leet
 // @match        https://leetcode.com/problems/*
@@ -700,12 +700,11 @@
 .ocleet-panel :is(input,textarea,select){accent-color:#6277ed}
 .ocleet-panel ::placeholder{color:var(--ocleet-subtle);opacity:1}
 .ocleet-panel :is(.ocleet-settings,.ocleet-note-menu,.ocleet-debugger){transition:background-color .18s ease,color .18s ease,border-color .18s ease}
-.ocleet-msg{animation:ocleet-message-in .24s ease-out}
 .ocleet-note-tools[open] .ocleet-note-menu{animation:ocleet-message-in .2s ease-out}
 .ocleet-panel :is(.ocleet-messages,.ocleet-settings,.ocleet-debug-code,.ocleet-debug-inspect){scrollbar-width:thin;scrollbar-color:var(--ocleet-line-strong) transparent}
 .ocleet-panel a{color:var(--ocleet-accent)}
 .ocleet-msg.user a{color:inherit}
-@keyframes ocleet-message-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes ocleet-message-in{from{opacity:0}to{opacity:1}}
 @media(prefers-reduced-motion:reduce){
   .ocleet-launcher,.ocleet-panel,.ocleet-panel *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
   .ocleet-launcher:hover,.ocleet-launcher:active,.ocleet-panel button:active{transform:none!important}
@@ -868,7 +867,7 @@
   }
   const restorePanelPosition = setupPanelDrag(panel, $("drag-handle"), () => panelVisibility.finish());
   const panelVisibility = createViewMotion(panel, { beforeShow: restorePanelPosition });
-  const settingsVisibility = createViewMotion(settingsBox, { offset: 10, duration: 240 });
+  const settingsVisibility = createViewMotion(settingsBox, { duration: 320 });
 
   /* ---------------------------------------------------- conversation state */
   const MAX_SAVED_MESSAGES = 200;
@@ -1004,6 +1003,7 @@
     if (role === "assistant") addCopyButtons(el);
     messagesEl.appendChild(el);
     scroll();
+    fadeInMessage(el);
     return el;
   }
 
@@ -1046,16 +1046,24 @@
     wrap.append(reason, body);
     messagesEl.appendChild(wrap);
     scroll();
+    fadeInMessage(wrap);
 
     const state = { content: "", reasoning: "" };
-    let frame = 0;
+    let frame = 0, contentShown = false;
+    function renderContent(completed = false) {
+      body.innerHTML = renderMarkdown(state.content) || (completed ? '<span class="ocleet-muted">（无内容）</span>' : '<span class="ocleet-cursor"></span>');
+      addCopyButtons(body);
+      scroll();
+      if (!contentShown && (state.content.trim() || completed)) {
+        contentShown = true;
+        fadeInMessage(body);
+      }
+    }
     const schedule = () => {
       if (frame) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
-        body.innerHTML = renderMarkdown(state.content) || '<span class="ocleet-cursor"></span>';
-        addCopyButtons(body);
-        scroll();
+        renderContent();
       });
     };
     return {
@@ -1065,9 +1073,12 @@
       },
       onReasoning: (d) => {
         state.reasoning += d;
+        if (!state.reasoning.trim()) return;
+        const firstReason = reason.hidden;
         reason.hidden = false;
         reasonBody.textContent = state.reasoning;
         scroll();
+        if (firstReason) fadeInMessage(reason);
       },
       text: () => state.content,
       done: () => {
@@ -1075,9 +1086,7 @@
           cancelAnimationFrame(frame);
           frame = 0;
         }
-        body.innerHTML = renderMarkdown(state.content) || '<span class="ocleet-muted">（无内容）</span>';
-        addCopyButtons(body);
-        scroll();
+        renderContent(true);
       },
       fail: (msg) => {
         if (frame) {
@@ -1088,6 +1097,7 @@
         wrap.classList.add("error");
         body.textContent = msg;
         scroll();
+        fadeInMessage(body);
       },
     };
   }
@@ -1797,7 +1807,7 @@ function installPythonDebugger() {
     <div class="ocleet-debug-workspace"><div class="ocleet-debug-code" data-debug="code" aria-label="点击代码行查看执行状态"></div><div class="ocleet-debug-inspect"><div data-debug="position" class="ocleet-debug-status">尚未运行</div><dl class="ocleet-debug-vars" data-debug="vars"></dl><pre class="ocleet-debug-result" data-debug="result"></pre></div></div>`;
   panel.appendChild(view);
   const visibility = createViewMotion(view, {
-    offset: 10, duration: 240,
+    duration: 320,
     beforeShow() { panelVisibility.finish(); panel.classList.add('ocleet-debug-open'); restorePanelPosition(); },
     afterHide() { panel.classList.remove('ocleet-debug-open'); restorePanelPosition(); },
   });
@@ -2050,7 +2060,7 @@ function installThemeSync(panel, launcher) {
 }
 
 // Keep the intended visibility separate from hidden while an exit animation runs.
-function createViewMotion(element, { offset = 14, duration = 280, beforeShow = () => {}, afterHide = () => {} } = {}) {
+function createViewMotion(element, { duration = 420, beforeShow = () => {}, afterHide = () => {} } = {}) {
   let visible = !element.hidden;
   let animation = null;
 
@@ -2079,7 +2089,7 @@ function createViewMotion(element, { offset = 14, duration = 280, beforeShow = (
 
     // Capture an interrupted frame before cancelling its fill effect.
     const current = animation || !element.hidden ? window.getComputedStyle(element) : null;
-    const start = current ? { opacity: current.opacity, transform: current.transform } : null;
+    const start = current ? { opacity: current.opacity } : null;
     cancelAnimation();
     visible = next;
     syncInteraction();
@@ -2094,14 +2104,14 @@ function createViewMotion(element, { offset = 14, duration = 280, beforeShow = (
       return visible;
     }
 
-    const resting = { opacity: '1', transform: 'translateY(0px)' };
-    const displaced = { opacity: '0', transform: `translateY(${offset}px)` };
+    const resting = { opacity: '1' };
+    const displaced = { opacity: '0' };
     const running = element.animate([
       start || (visible ? displaced : resting),
       visible ? resting : displaced,
     ], {
-      duration: visible ? duration : Math.min(duration, 200),
-      easing: 'cubic-bezier(.22, 1, .36, 1)',
+      duration: visible ? duration : Math.min(duration, 320),
+      easing: 'ease-in-out',
       fill: 'both',
     });
     animation = running;
@@ -2115,6 +2125,15 @@ function createViewMotion(element, { offset = 14, duration = 280, beforeShow = (
 
   syncInteraction();
   return { setVisible, toggle: () => setVisible(!visible), isVisible: () => visible, finish };
+}
+
+// Fade new content when it becomes visible, including the first streamed answer.
+function fadeInMessage(element) {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || typeof element.animate !== 'function') return;
+  const animation = element.animate([{ opacity: '0' }, { opacity: '1' }], {
+    duration: 400, easing: 'ease-in-out', fill: 'both',
+  });
+  animation.onfinish = () => animation.cancel();
 }
 
   installThemeSync(panel, launcher);

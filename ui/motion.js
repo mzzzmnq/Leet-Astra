@@ -1,5 +1,5 @@
 // Keep the intended visibility separate from hidden while an exit animation runs.
-function createViewMotion(element, { offset = 14, duration = 280, beforeShow = () => {}, afterHide = () => {} } = {}) {
+function createViewMotion(element, { duration = 420, beforeShow = () => {}, afterHide = () => {} } = {}) {
   let visible = !element.hidden;
   let animation = null;
 
@@ -28,7 +28,7 @@ function createViewMotion(element, { offset = 14, duration = 280, beforeShow = (
 
     // Capture an interrupted frame before cancelling its fill effect.
     const current = animation || !element.hidden ? window.getComputedStyle(element) : null;
-    const start = current ? { opacity: current.opacity, transform: current.transform } : null;
+    const start = current ? { opacity: current.opacity } : null;
     cancelAnimation();
     visible = next;
     syncInteraction();
@@ -43,14 +43,14 @@ function createViewMotion(element, { offset = 14, duration = 280, beforeShow = (
       return visible;
     }
 
-    const resting = { opacity: '1', transform: 'translateY(0px)' };
-    const displaced = { opacity: '0', transform: `translateY(${offset}px)` };
+    const resting = { opacity: '1' };
+    const displaced = { opacity: '0' };
     const running = element.animate([
       start || (visible ? displaced : resting),
       visible ? resting : displaced,
     ], {
-      duration: visible ? duration : Math.min(duration, 200),
-      easing: 'cubic-bezier(.22, 1, .36, 1)',
+      duration: visible ? duration : Math.min(duration, 320),
+      easing: 'ease-in-out',
       fill: 'both',
     });
     animation = running;
@@ -64,4 +64,13 @@ function createViewMotion(element, { offset = 14, duration = 280, beforeShow = (
 
   syncInteraction();
   return { setVisible, toggle: () => setVisible(!visible), isVisible: () => visible, finish };
+}
+
+// Fade new content when it becomes visible, including the first streamed answer.
+function fadeInMessage(element) {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || typeof element.animate !== 'function') return;
+  const animation = element.animate([{ opacity: '0' }, { opacity: '1' }], {
+    duration: 400, easing: 'ease-in-out', fill: 'both',
+  });
+  animation.onfinish = () => animation.cancel();
 }

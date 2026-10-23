@@ -18,10 +18,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     const panel = page.locator('.ocleet-panel');
     const launcher = page.locator('.ocleet-launcher');
     const click = selector => page.locator(selector).evaluate(element => element.click());
-    const settled = selector => page.waitForFunction(selector => !document.querySelector(selector).getAnimations().some(a => a.effect.getKeyframes().some(f => f.transform !== undefined)), selector);
+    const settled = selector => page.waitForFunction(selector => !document.querySelector(selector).getAnimations().some(a => a.effect.getKeyframes().some(f => f.opacity !== undefined)), selector);
     async function sampleMotion(selector) {
       const sample = await page.locator(selector).evaluate(element => {
-        const animation = element.getAnimations().find(a => a.effect.getKeyframes().some(f => f.transform !== undefined));
+        const animation = element.getAnimations().find(a => a.effect.getKeyframes().some(f => f.opacity !== undefined));
         if (!animation) throw new Error('No active visibility animation: ' + element.className);
         const running = animation.playState;
         animation.pause();
@@ -35,7 +35,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       });
       assert.equal(sample.running, 'running');
       assert.ok(sample.middle.opacity > 0 && sample.middle.opacity < 1, JSON.stringify(sample));
-      assert.notEqual(sample.middle.transform, 'none');
+      assert.equal(sample.middle.transform, 'none');
+      assert.ok(sample.middle.opacity > 0.15 && sample.middle.opacity < 0.85, 'fade must remain visible at 35% of its duration');
       await settled(selector);
       return sample;
     }
@@ -68,6 +69,27 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await screenshot('leet-astra-fixed-dark');
     await theme('light', 'rgb(255, 255, 255)', 'rgb(30, 41, 59)');
 
+    // New questions and the first actual response both fade; later chunks stay fully visible.
+    await page.evaluate(() => {
+      window.fadeCounts = { user: 0, body: 0, reason: 0 };
+      const animate = Element.prototype.animate;
+      Element.prototype.animate = function (...args) {
+        if (this.matches('.ocleet-msg.user')) window.fadeCounts.user++;
+        if (this.matches('.ocleet-body')) window.fadeCounts.body++;
+        if (this.matches('.ocleet-reason')) window.fadeCounts.reason++;
+        return animate.apply(this, args);
+      };
+    });
+    await page.locator('[data-ocleet="tabs"]').selectOption('knowledge');
+    await page.locator('[data-ocleet="input"]').fill('解释 nums[::-1]');
+    await click('[data-ocleet="send"]');
+    const userMessage = await sampleMotion('.ocleet-msg.user');
+    await page.waitForFunction(() => document.querySelector('.ocleet-body').getAnimations().some(a => a.effect.getKeyframes().some(f => f.opacity !== undefined)));
+    const aiMessage = await sampleMotion('.ocleet-body');
+    await page.waitForFunction(() => !document.querySelector('[data-ocleet="send"]').disabled);
+    assert.deepEqual(await page.evaluate(() => window.fadeCounts), { user: 1, body: 1, reason: 1 });
+    assert.equal(await page.locator('.ocleet-body').evaluate(el => getComputedStyle(el).opacity), '1');
+
     await click('[data-ocleet="close"]');
     assert.equal(await panel.evaluate(el => el.hidden), false);
     assert.equal(await panel.evaluate(el => el.inert), true);
@@ -81,11 +103,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     const reversal = await page.evaluate(() => {
       const panel = document.querySelector('.ocleet-panel');
       document.querySelector('[data-ocleet="close"]').click();
-      const exit = panel.getAnimations().find(a => a.effect.getKeyframes().some(f => f.transform !== undefined));
+      const exit = panel.getAnimations().find(a => a.effect.getKeyframes().some(f => f.opacity !== undefined));
       exit.pause(); exit.currentTime = 80;
       const opacity = getComputedStyle(panel).opacity;
       document.querySelector('.ocleet-launcher').click();
-      const entrance = panel.getAnimations().find(a => a.effect.getKeyframes().some(f => f.transform !== undefined));
+      const entrance = panel.getAnimations().find(a => a.effect.getKeyframes().some(f => f.opacity !== undefined));
       return { opacity, restartedAt: entrance.effect.getKeyframes()[0].opacity };
     });
     assert.ok(Math.abs(Number(reversal.opacity) - Number(reversal.restartedAt)) < 0.001);
@@ -95,7 +117,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     // Drag while entrance is paused at an intermediate frame, then reopen at the saved position.
     await click('[data-ocleet="close"]'); await settled('.ocleet-panel');
     await click('.ocleet-launcher');
-    await panel.evaluate(el => { const a = el.getAnimations().find(a => a.effect.getKeyframes().some(f => f.transform !== undefined)); a.pause(); a.currentTime = 60; });
+    await panel.evaluate(el => { const a = el.getAnimations().find(a => a.effect.getKeyframes().some(f => f.opacity !== undefined)); a.pause(); a.currentTime = 60; });
     const header = await page.locator('.ocleet-head').boundingBox();
     await page.mouse.move(header.x + 90, header.y + 25); await page.mouse.down();
     assert.equal(await panel.evaluate(el => getComputedStyle(el).transform), 'none');
@@ -123,6 +145,6 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.setViewportSize({ width: 390, height: 740 });
     const box = await panel.boundingBox(); assert.ok(box.x >= 0 && box.x + box.width <= 391);
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ light, dark, entrance, exit, checks: 'late legacy CSS, animation intermediate frames, rapid reversal, dragging during entrance, saved position, settings/debugger, reduced motion, narrow layout' }));
+    console.log(JSON.stringify({ light, dark, entrance, exit, userMessage, aiMessage, checks: 'late legacy CSS, animation intermediate frames, rapid reversal, dragging during entrance, saved position, settings/debugger, question and first answer fade, later chunks stay visible, reduced motion, narrow layout' }));
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
