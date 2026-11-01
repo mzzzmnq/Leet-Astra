@@ -89,7 +89,7 @@ test('rendered variables distinguish initial, added, changed and deleted values'
 test('worker supplies expected text as a separate Python global', async () => {
   const workerSource = fs.readFileSync(path.join(__dirname, '../debugger/worker.js'), 'utf8');
   const globals = new Map(); let command;
-  const context = vm.createContext({ self: { postMessage() {} }, importScripts() {}, loadPyodide: async () => ({ globals, runPython: code => { command = code; return '{}'; } }) });
+  const context = vm.createContext({ self: { postMessage() {}, fetch: async () => ({ok:true,text:async()=>""}), importScripts() {} }, URL: {createObjectURL:()=>"blob:test",revokeObjectURL(){}}, Blob, importScripts() {}, loadPyodide: async () => ({ globals, runPython: code => { command = code; return '{}'; } }) });
   vm.runInContext(workerSource, context); context.pythonDebugWorker();
   await context.self.onmessage({ data: { type: 'load', engine: 'setup' } });
   await context.self.onmessage({ data: { type: 'run', code: 'code', input: '1', entry: 'solve', expected: '[2]' } });

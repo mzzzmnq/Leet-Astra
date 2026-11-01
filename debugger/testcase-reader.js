@@ -96,7 +96,7 @@ function readChatExecution() {
       if (/解答错误|执行出错|编译出错|通过|超出时间限制|Wrong Answer|Runtime Error|Compile Error|Accepted|Time Limit Exceeded/i.test(text)
           && /输入|输出|Input|Output|Error|错误/.test(text)) {
         if (!panels.includes(container)) panels.push(container);
-        break;
+        // Continue to the containing results pane: the status header alone has no inputs.
       }
     }
   }

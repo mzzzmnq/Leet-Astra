@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 const { setup } = require('./conversation-harness.cjs');
 
-test('problem reader and problem button never access the code editor', () => {
+test('problem reader never accesses the code editor', () => {
   const app = setup();
   const source = fs.readFileSync(path.join(__dirname, '../openleet.user.js'), 'utf8');
   Object.assign(app.context, {
@@ -15,8 +15,6 @@ test('problem reader and problem button never access the code editor', () => {
   vm.runInContext(source.slice(source.indexOf('  function readProblem()'), source.indexOf('  function readChatContext(')), app.context);
   assert.equal(app.context.readProblem().description, 'Find two numbers');
   assert.equal('code' in app.context.readProblem(), false);
-  app.context.onReadProblem();
-  assert.match(app.rendered.at(-1).content, /Two Sum/);
   assert.equal(app.context.codeStatusEl.textContent, undefined);
 });
 
@@ -66,7 +64,7 @@ test('problem and code controls do not overwrite each other, and changing proble
   const app = setup();
   app.context.onReadCode();
   const codeStatus = app.context.codeStatusEl.textContent;
-  app.context.onReadProblem();
+  app.context.renderProblemChip(app.context.readProblem());
   assert.equal(app.context.codeStatusEl.textContent, codeStatus);
   app.context.cfg.mode = 'knowledge';
   app.navigate('add-two-numbers');

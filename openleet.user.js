@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Leet Astra
 // @namespace    opencode-leet
-// @version      3.3.5
+// @version      3.4.0
 // @description  在 LeetCode 题目页嵌入 AI 对话面板：分步提示 / 讲代码+复杂度 / Debug 报错 / 代码批注 / Python 知识点。纯前端，直接用你自己的 API key。
 // @author       opencode-leet
 // @match        https://leetcode.com/problems/*
@@ -117,7 +117,6 @@
     baseUrl: "https://open.bigmodel.cn/api/paas/v4",
     model: "glm-4.7-flash",
     includeCode: true,
-    autoRead: true,
     mode: "hint",
     fontSize: 14,
     // 每个供应商各存一把 key —— 切换供应商时不会把 A 家的 key 发到 B 家
@@ -201,7 +200,7 @@
     },
     debug: {
       label: "Debug 报错",
-      tip: "先选中失败用例并展开测试结果，发送时自动读取。",
+      tip: "选中失败用例，点击「读取测试用例」，核对后提问。",
       placeholder: "贴上报错信息 / 失败的用例（输入、期望输出、实际输出）…",
       quick: "帮我找出当前代码里的 bug",
       system: [
@@ -435,7 +434,7 @@
   function readChatContext(mode) {
     const problem = mode === "knowledge" ? {} : readProblem();
     const code = cfg.includeCode && (mode !== "knowledge" || codeRequested) ? readCode() : null;
-    return { ...problem, ...code, ...(mode === "knowledge" ? {} : readChatExecution()) };
+    return { ...problem, ...code, ...(mode === "knowledge" ? {} : (typeof capturedExecution !== "undefined" && capturedExecution?.slug === currentSlug() ? capturedExecution : readChatExecution())) };
   }
 
   /* ------------------------------------------------------------- upstream API */
@@ -760,14 +759,14 @@
       <label class="ocleet-field"><span>免费模型</span><select data-ocleet="model"></select></label>
       <div class="ocleet-provider-info"><p data-ocleet="provider-tip"></p><p data-ocleet="model-tip"></p><a data-ocleet="key-link" target="_blank" rel="noopener noreferrer">获取当前供应商的 API Key ↗</a></div>
       <div class="ocleet-section-label">题目上下文</div><label class="ocleet-check"><input type="checkbox" data-ocleet="include-code" /><span>把当前编辑器里的代码发给模型</span></label>
-      <label class="ocleet-check"><input type="checkbox" data-ocleet="auto-read" /><span>打开面板时自动读取题目</span></label>
+
       <details class="ocleet-settings-notes"><summary>LeetNote 笔记设置</summary><label class="ocleet-field"><span>LeetNote 地址</span><input type="text" data-ocleet="leetnote-url" placeholder="http://127.0.0.1:8080" /></label>
       <label class="ocleet-field"><span>LeetNote 令牌（ln_…）</span><input type="password" data-ocleet="leetnote-token" placeholder="ln_…" autocomplete="off" /></label>
       <label class="ocleet-check"><input type="checkbox" data-ocleet="include-ai" /><span>导入时把最近一次 AI 讲解写进笔记正文</span></label></details>
     </div>
     <div class="ocleet-model-bar"><span>当前模型</span><button type="button" data-ocleet="model-shortcut"></button></div>
     <div class="ocleet-mode-row"><label for="ocleet-mode">问答模式</label><select id="ocleet-mode" class="ocleet-mode-select" data-ocleet="tabs"></select></div>
-    <div class="ocleet-work-tools"><button class="ocleet-btn" type="button" data-ocleet="read">读取题目</button><button class="ocleet-btn" type="button" data-ocleet="read-code">读取当前代码</button><button class="ocleet-btn" type="button" data-ocleet="open-debugger">逐行调试</button></div>
+    <div class="ocleet-work-tools"><button class="ocleet-btn" type="button" data-ocleet="read">读取测试用例</button><button class="ocleet-btn" type="button" data-ocleet="read-code">读取当前代码</button><button class="ocleet-btn" type="button" data-ocleet="open-debugger">逐行调试</button></div>
     <div class="ocleet-hint" data-ocleet="tip" style="padding:0 12px 6px"></div>
     <details class="ocleet-context">
       <summary>题目与代码 · 读取详情</summary>
@@ -809,7 +808,7 @@
   const providerSelect = $("provider");
   const baseUrlInput = $("baseurl");
   const includeCodeEl = $("include-code");
-  const autoReadEl = $("auto-read");
+
   const settingsBox = $("settings-box");
   const leetnoteUrlInput = $("leetnote-url");
   const leetnoteTokenInput = $("leetnote-token");
@@ -1148,11 +1147,14 @@
     codeStatusEl.textContent = `当前代码${code.lang ? `（${code.lang}）` : ""}：${count} 字符${code.codeIncomplete ? " · 未获取完整代码" : ""}${cfg.includeCode ? "" : " · 已关闭发送代码"}`;
   }
 
-  function onReadProblem() {
+  let capturedExecution = null;
+  function onReadTestCases() {
     syncConversation();
-    const problem = readProblem();
-    renderProblemChip(problem);
-    addMessage("assistant", `已读取题目 **${problem.title || "(未识别)"}**。需要查看编辑器内容时，请点「读取当前代码」。`);
+    capturedExecution = { ...readChatExecution(), slug: currentSlug() };
+    renderExecutionPreview(capturedExecution);
+    $("execution-preview").open = true;
+    const text = capturedExecution.runResult || capturedExecution.testCases.filter(c => c.source !== "question").map(c => c.input).join("\n");
+    addMessage("assistant", text ? "已读取测试用例，展开上方预览核对后提问。" : "未读取到新增用例。请展开力扣的输入内容，再点击读取测试用例。");
   }
 
   function onReadCode() {
@@ -1166,7 +1168,7 @@
     addMessage("assistant", codeStatus + (cfg.includeCode ? "" : "设置中已关闭发送代码，启用后才会附带到 AI 请求。"));
   }
 
-  const WELCOME = "选择问答模式后直接提问。上方可分别读取题目和代码、启动逐行调试；点击当前模型切换免费模型。";
+  const WELCOME = "选择问答模式后直接提问。题目自动读取，上方可读取测试用例和代码、启动逐行调试；点击当前模型切换免费模型。";
 
   function resetMessages() {
     messagesEl.textContent = "";
@@ -1243,6 +1245,10 @@
         stream: true,
         messages: [{ role: "system", content: buildSystem(cfg.mode, problem) }, ...chatHistory()],
       };
+      if (problem.runResult) {
+        const lastUser = [...payload.messages].reverse().find(message => message.role === "user");
+        if (lastUser) lastUser.content += "\n\n【本次读取的当前测试结果，请据此分析】\n" + problem.runResult;
+      }
       await directChat(payload, (delta) => {
         if (!isCurrent()) return;
         reply.content += delta;
@@ -1469,7 +1475,7 @@
     inputEl.placeholder = SKILLS[cfg.mode].placeholder;
     $("tip").textContent = SKILLS[cfg.mode].tip;
     $("read").disabled = cfg.mode === "knowledge";
-    $("read").title = cfg.mode === "knowledge" ? "知识点模式无需题目，可单独读取当前代码" : "只读取题目标题、描述、难度和标签";
+    $("read").title = cfg.mode === "knowledge" ? "知识点模式无需题目，可单独读取当前代码" : "读取当前测试用例与运行结果，点击后查看预览";
     $("read-code").title = "只读取当前编辑器代码；启用发送代码时附带到 AI 请求";
     problemEl.hidden = true;
     renderCodeChip(cfg.mode === "knowledge" && !codeRequested ? null : latestCodeContext);
@@ -1521,7 +1527,7 @@
   launcher.addEventListener("click", () => {
     syncConversation();
     panelVisibility.toggle();
-    if (panelVisibility.isVisible() && cfg.autoRead && cfg.mode !== "knowledge") {
+    if (panelVisibility.isVisible()) {
       const problem = readProblem();
       renderProblemChip(problem);
     }
@@ -1550,7 +1556,7 @@
   $("start-leetnote").addEventListener("click", startLeetNote);
   $("clear").title = "清除本题已保存的对话和草稿";
   $("clear").addEventListener("click", clearConversation);
-  $("read").addEventListener("click", onReadProblem);
+  $("read").addEventListener("click", onReadTestCases);
   $("read-code").addEventListener("click", onReadCode);
   inputEl.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -1595,10 +1601,7 @@
     saveCfg();
     renderCodeChip(cfg.mode === "knowledge" && !codeRequested ? null : latestCodeContext);
   });
-  autoReadEl.addEventListener("change", () => {
-    cfg.autoRead = autoReadEl.checked;
-    saveCfg();
-  });
+
   leetnoteUrlInput.addEventListener("change", () => {
     cfg.leetnoteUrl = leetnoteUrlInput.value.trim() || DEFAULTS.leetnoteUrl;
     saveCfg();
@@ -1617,13 +1620,14 @@
   apiKeyInput.value = providerKey(currentProvider());
   baseUrlInput.value = cfg.baseUrl;
   includeCodeEl.checked = cfg.includeCode;
-  autoReadEl.checked = cfg.autoRead;
+
   leetnoteUrlInput.value = cfg.leetnoteUrl;
   leetnoteTokenInput.value = cfg.leetnoteToken;
   includeAiEl.checked = cfg.includeAi;
   renderTabs();
   fillModels(modelsForBase());
   syncConversation(true);
+  renderProblemChip(readProblem());
 
   verifyKey();
 
@@ -1631,7 +1635,9 @@
   setInterval(() => {
     if (!syncConversation()) return;
     pythonDebugger.onRouteChange();
-    if (!panel.hidden && cfg.autoRead && cfg.mode !== "knowledge") renderProblemChip(readProblem());
+    capturedExecution = null;
+    $("execution-preview").hidden = true;
+    renderProblemChip(readProblem());
   }, 1200);
 
   // BEGIN GENERATED DEBUGGER
@@ -1734,7 +1740,7 @@ function readChatExecution() {
       if (/解答错误|执行出错|编译出错|通过|超出时间限制|Wrong Answer|Runtime Error|Compile Error|Accepted|Time Limit Exceeded/i.test(text)
           && /输入|输出|Input|Output|Error|错误/.test(text)) {
         if (!panels.includes(container)) panels.push(container);
-        break;
+        // Continue to the containing results pane: the status header alone has no inputs.
       }
     }
   }
@@ -1751,8 +1757,32 @@ function pythonDebugWorker() {
   self.onmessage = async ({ data }) => {
     try {
       if (data.type === 'load') {
-        importScripts('https://cdn.jsdelivr.net/pyodide/v0.29.3/full/pyodide.js');
+        const base = 'https://cdn.jsdelivr.net/pyodide/v0.29.3/full/';
+        const networkFetch = self.fetch.bind(self);
+        let cache;
+        try { cache = await self.caches.open('leet-astra-python-0.29.3'); } catch { /* Private mode can disable persistent storage. */ }
+        self.fetch = async (input, options) => {
+          const url = typeof input === 'string' ? input : input.url;
+          if (!url?.startsWith(base)) return networkFetch(input, options);
+          const saved = await cache?.match(url).catch(() => null);
+          if (saved) return saved;
+          self.postMessage({type:'status', message:'正在下载 Python 资源，下载后保存到浏览器缓存…'});
+          const response = await networkFetch(input, options);
+          if (response.ok && cache) await cache.put(url, response.clone()).catch(() => {});
+          return response;
+        };
+        const scriptURLs = new Map();
+        for (const name of ['pyodide.js', 'pyodide.asm.js']) {
+          const response = await self.fetch(base + name);
+          if (!response.ok) throw Error('Python 资源下载失败：' + name);
+          scriptURLs.set(base + name, URL.createObjectURL(new Blob([await response.text()], {type:'text/javascript'})));
+        }
+        const importOriginal = self.importScripts.bind(self);
+        self.importScripts = (...urls) => importOriginal(...urls.map(url => scriptURLs.get(url) || url));
+        self.postMessage({type:'status', message:cache ? '正在初始化 Python（资源优先使用本地缓存）…' : '正在初始化 Python（浏览器未允许持久缓存）…'});
+        importScripts(scriptURLs.get(base + 'pyodide.js'));
         engine = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.29.3/full/' });
+        for (const url of scriptURLs.values()) URL.revokeObjectURL(url);
         engine.runPython(data.engine);
         self.postMessage({ type: 'ready' });
       } else if (data.type === 'run' && engine) {
@@ -1789,7 +1819,8 @@ function createPythonDebugRun(payload, onStatus) {
       timer = setTimeout(() => fail('Python 环境加载超过 90 秒，请检查网络后重试。'), 90000);
       worker.onmessage = ({ data }) => {
         if (settled) return;
-        if (data.type === 'ready') {
+        if (data.type === 'status') { onStatus(data.message);
+        } else if (data.type === 'ready') {
           clearTimeout(timer);
           onStatus('正在执行当前用例并记录变量…');
           timer = setTimeout(() => fail('代码执行超过 8 秒，已终止执行线程。请检查死循环或缩小用例。'), 8000);
@@ -1798,7 +1829,7 @@ function createPythonDebugRun(payload, onStatus) {
           settled = true; cleanup(); resolve(data.result);
         } else if (data.type === 'error') fail(data.error);
       };
-      onStatus('首次运行需下载 Python 环境（约十余 MB），正在加载…');
+      onStatus('正在检查 Python 本地缓存并加载环境…');
       worker.postMessage({ type: 'load', engine: PYTHON_TRACE_SOURCE });
     } catch (error) { fail('无法创建 Python 执行线程：' + error.message); }
   });

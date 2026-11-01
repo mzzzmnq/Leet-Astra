@@ -111,6 +111,7 @@ test('each chat request receives the latest code through readProblem and buildSy
     IS_DEMO: false, location: { hostname: 'leetcode.com', pathname: '/problems/two-sum/', href: 'https://leetcode.com/problems/two-sum/' },
     store: { get: () => null, set: () => true }, clearTimeout, setTimeout,
     chatStatusEl: {}, problemEl: {}, codeStatusEl: {}, resetMessages: () => {}, renderCodeChip: () => {},
+    readChatExecution: () => ({testCases:[],runResult:""}), renderExecutionPreview() {},
     readTitle: () => 'Two Sum', readDifficulty: () => 'Easy', readTags: () => [], readDescription: () => 'Description',
     BASE_SYSTEM: 'Assistant', SKILLS: { hint: { system: 'Hint' } }, cfg: { mode: 'hint', model: 'test', includeCode: true },
     busy: false, history: [], inputEl: { value: 'Explain' }, sendBtn: {}, stopReplyBtn: {},

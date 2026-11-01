@@ -4,8 +4,32 @@ function pythonDebugWorker() {
   self.onmessage = async ({ data }) => {
     try {
       if (data.type === 'load') {
-        importScripts('https://cdn.jsdelivr.net/pyodide/v0.29.3/full/pyodide.js');
+        const base = 'https://cdn.jsdelivr.net/pyodide/v0.29.3/full/';
+        const networkFetch = self.fetch.bind(self);
+        let cache;
+        try { cache = await self.caches.open('leet-astra-python-0.29.3'); } catch { /* Private mode can disable persistent storage. */ }
+        self.fetch = async (input, options) => {
+          const url = typeof input === 'string' ? input : input.url;
+          if (!url?.startsWith(base)) return networkFetch(input, options);
+          const saved = await cache?.match(url).catch(() => null);
+          if (saved) return saved;
+          self.postMessage({type:'status', message:'正在下载 Python 资源，下载后保存到浏览器缓存…'});
+          const response = await networkFetch(input, options);
+          if (response.ok && cache) await cache.put(url, response.clone()).catch(() => {});
+          return response;
+        };
+        const scriptURLs = new Map();
+        for (const name of ['pyodide.js', 'pyodide.asm.js']) {
+          const response = await self.fetch(base + name);
+          if (!response.ok) throw Error('Python 资源下载失败：' + name);
+          scriptURLs.set(base + name, URL.createObjectURL(new Blob([await response.text()], {type:'text/javascript'})));
+        }
+        const importOriginal = self.importScripts.bind(self);
+        self.importScripts = (...urls) => importOriginal(...urls.map(url => scriptURLs.get(url) || url));
+        self.postMessage({type:'status', message:cache ? '正在初始化 Python（资源优先使用本地缓存）…' : '正在初始化 Python（浏览器未允许持久缓存）…'});
+        importScripts(scriptURLs.get(base + 'pyodide.js'));
         engine = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.29.3/full/' });
+        for (const url of scriptURLs.values()) URL.revokeObjectURL(url);
         engine.runPython(data.engine);
         self.postMessage({ type: 'ready' });
       } else if (data.type === 'run' && engine) {
@@ -42,7 +66,8 @@ function createPythonDebugRun(payload, onStatus) {
       timer = setTimeout(() => fail('Python 环境加载超过 90 秒，请检查网络后重试。'), 90000);
       worker.onmessage = ({ data }) => {
         if (settled) return;
-        if (data.type === 'ready') {
+        if (data.type === 'status') { onStatus(data.message);
+        } else if (data.type === 'ready') {
           clearTimeout(timer);
           onStatus('正在执行当前用例并记录变量…');
           timer = setTimeout(() => fail('代码执行超过 8 秒，已终止执行线程。请检查死循环或缩小用例。'), 8000);
@@ -51,7 +76,7 @@ function createPythonDebugRun(payload, onStatus) {
           settled = true; cleanup(); resolve(data.result);
         } else if (data.type === 'error') fail(data.error);
       };
-      onStatus('首次运行需下载 Python 环境（约十余 MB），正在加载…');
+      onStatus('正在检查 Python 本地缓存并加载环境…');
       worker.postMessage({ type: 'load', engine: PYTHON_TRACE_SOURCE });
     } catch (error) { fail('无法创建 Python 执行线程：' + error.message); }
   });
