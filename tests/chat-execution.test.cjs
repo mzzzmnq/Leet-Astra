@@ -6,5 +6,5 @@ test('execution reader captures visible result text and excludes hidden panels a
  vm.runInContext(fs.readFileSync('debugger/testcase-reader.js','utf8'),context);
  context.readDebugTestCases=()=>[{input:'[1,2]',source:'visible-testcase'}];
  const result=context.readChatExecution();assert.match(result.runResult,/IndexError/);assert.doesNotMatch(result.runResult,/stale|unrelated/);assert.equal(result.testCases[0].input,'[1,2]');
- panels[0].innerText='Wrong Answer';assert.equal(context.readChatExecution().runResult,'Wrong Answer');
+ panels[0].innerText='Wrong Answer';assert.equal(context.readChatExecution().runResult,'');
 });

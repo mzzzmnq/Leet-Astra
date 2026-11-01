@@ -91,7 +91,7 @@ function readChatExecution() {
     if (!visible(label) || !/^(测试结果|运行结果|执行结果|Test Result|Test Results)$/i.test(label.textContent.trim())) continue;
     let container = label.parentElement;
     for (let depth = 0; container && depth < 9; depth++, container = container.parentElement) {
-      if (container.matches('body, html') || container.querySelector('.ocleet-panel, .monaco-editor')) break;
+      if (container.matches('body, html') || container.querySelector('.ocleet-panel, [data-track-load="description_content"]')) break;
       const text = container.innerText || '';
       if (/解答错误|执行出错|编译出错|通过|超出时间限制|Wrong Answer|Runtime Error|Compile Error|Accepted|Time Limit Exceeded/i.test(text)
           && /输入|输出|Input|Output|Error|错误/.test(text)) {
@@ -100,9 +100,26 @@ function readChatExecution() {
       }
     }
   }
+  // Result values can themselves be read-only Monaco editors. Locate their
+  // shared pane from the data labels, even when the toolbar is a separate dock.
+  for (const label of document.querySelectorAll('span, button, div')) {
+    if (!visible(label) || !/^(预期结果|预期输出|期望输出|Expected|Expected Output)$/i.test(label.textContent.trim())) continue;
+    for (let node = label.parentElement; node && !node.matches('body, html'); node = node.parentElement) {
+      if (node.querySelector('.ocleet-panel, [data-track-load="description_content"]')) break;
+      const text = node.innerText || '';
+      if (/输入|\bInput\b/i.test(text) && /输出|\bOutput\b/i.test(text)) {
+        if (!panels.includes(node)) panels.push(node);
+        break;
+      }
+    }
+  }
   const roots = panels.filter(node => !panels.some(other => other !== node && other.contains(node)));
-  return {
-    testCases: readDebugTestCases(),
-    runResult: roots.map(node => node.innerText || node.textContent || '').join('\n').trim().slice(0, 12000),
-  };
+  const text = roots.map(node => node.innerText || node.textContent || '').join('\n').trim();
+  // A status heading alone is not a testcase or diagnostic.
+  const runResult = /输入|输出|\bInput\b|\bOutput\b|Traceback|Error\s*:/i.test(text) ? text.slice(0, 12000) : '';
+  const testCases = readDebugTestCases();
+  const input = runResult.match(/(?:输入|\bInput\b)\s*[:：]?\s*([\s\S]*?)(?=输出|\bOutput\b|预期结果|Expected)/i)?.[1]?.trim();
+  if (input) testCases.unshift({name:'当前选中用例（测试结果输入）',input,source:'result-input'});
+  return { testCases, runResult };
+
 }
