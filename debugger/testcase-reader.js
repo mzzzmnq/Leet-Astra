@@ -72,3 +72,23 @@ function readDebugTestCases() {
     return true;
   });
 }
+
+// Read live page state on every chat send, independently of the Python debugger.
+function readChatExecution() {
+  const visible = node => node.isConnected !== false
+    && !node.closest('.ocleet-panel, [hidden], [aria-hidden="true"]')
+    && node.getClientRects().length > 0;
+  const selectors = '[data-e2e-locator="console-result"], [data-e2e-locator="console-result-content"], [data-cy="test-result"], [role="tabpanel"]';
+  const panels = Array.from(document.querySelectorAll(selectors)).filter(node => {
+    if (!visible(node)) return false;
+    if (node.getAttribute('role') !== 'tabpanel') return true;
+    const labels = (node.getAttribute('aria-labelledby') || '').split(/\s+/)
+      .map(id => document.getElementById(id)?.textContent || '').join(' ');
+    return /test\s*result|测试结果|运行结果|执行结果/i.test((node.getAttribute('aria-label') || '') + ' ' + labels);
+  });
+  const roots = panels.filter(node => !panels.some(other => other !== node && other.contains(node)));
+  return {
+    testCases: readDebugTestCases(),
+    runResult: roots.map(node => node.innerText || node.textContent || '').join('\n').trim().slice(0, 12000),
+  };
+}

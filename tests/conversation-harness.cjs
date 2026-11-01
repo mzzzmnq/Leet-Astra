@@ -27,6 +27,7 @@ function setup(saved = new Map(), options = {}) {
     sendBtn: {}, stopReplyBtn: {}, chatStatusEl: {}, problemEl: {}, codeStatusEl: {},
     cfg: { mode: 'hint', model: 'test', includeCode: true },
     readProblem: () => ({ title: 'Problem' }),
+    readChatExecution: () => ({ testCases: [], runResult: '' }),
     readCode: () => ({ code: 'CURRENT_CODE', codeSource: 'model' }),
     resetMessages: () => { rendered.length = 0; },
     addMessage: (role, content) => { rendered.push({ role, content }); },

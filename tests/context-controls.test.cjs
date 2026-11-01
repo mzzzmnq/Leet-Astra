@@ -77,3 +77,21 @@ test('problem and code controls do not overwrite each other, and changing proble
   app.requests[0].resolve();
   await pending;
 });
+
+test('chat reads newly added cases and latest run errors on each send without debugger', async () => {
+ const h=setup();
+ let input='nums = [1, 1, 1, 1]', error='IndexError: list index out of range';
+ h.context.readChatExecution=()=>({testCases:[{name:'手动用例 4',input}],runResult:error});
+ const first=h.send('分析新增用例的错误');
+ assert.match(h.requests[0].payload.messages[0].content,/手动用例 4/);
+ assert.match(h.requests[0].payload.messages[0].content,/IndexError/);
+ h.requests[0].resolve();await first;
+ input='nums = []';error='Wrong Answer';
+ const second=h.send('现在呢');
+ const system=h.requests[1].payload.messages[0].content;
+ assert.ok(system.includes(input));assert.match(system,/Wrong Answer/);assert.doesNotMatch(system,/IndexError/);
+ h.requests[1].resolve();await second;
+ h.context.cfg.mode='knowledge';
+ h.context.readChatExecution=()=>{throw Error('Knowledge mode must not read execution');};
+ const third=h.send('解释切片');h.requests[2].resolve();await third;
+});

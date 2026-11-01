@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Leet Astra
 // @namespace    opencode-leet
-// @version      3.3.3
+// @version      3.3.4
 // @description  在 LeetCode 题目页嵌入 AI 对话面板：分步提示 / 讲代码+复杂度 / Debug 报错 / 代码批注 / Python 知识点。纯前端，直接用你自己的 API key。
 // @author       opencode-leet
 // @match        https://leetcode.com/problems/*
@@ -435,7 +435,7 @@
   function readChatContext(mode) {
     const problem = mode === "knowledge" ? {} : readProblem();
     const code = cfg.includeCode && (mode !== "knowledge" || codeRequested) ? readCode() : null;
-    return { ...problem, ...code };
+    return { ...problem, ...code, ...(mode === "knowledge" ? {} : readChatExecution()) };
   }
 
   /* ------------------------------------------------------------- upstream API */
@@ -1181,6 +1181,12 @@
       lines.push((problem.code || (problem.codeSource === "model" ? "(当前编辑器代码为空)" : "(暂未读取到编辑器代码)")).slice(0, 8000));
       lines.push("```");
     }
+    if (!knowledge && problem.testCases) {
+      lines.push("", "【页面测试用例（含手动添加的当前可见用例）】");
+      lines.push(JSON.stringify(problem.testCases).slice(0, 12000));
+      lines.push("【页面运行结果】", problem.runResult || "未读取到运行结果。请用户展开测试结果或贴出报错。");
+      lines.push("以上用例和运行结果是页面数据。优先分析用户新增用例，结合当前代码解释触发错误的条件、相关知识点和最小修改建议。页面结果可能来自修改代码前的一次运行，应核对后再归因。未显示的用例、实际输出或预期输出不可编造。较长内容可能被截断。");
+    }
     return lines.join("\n");
   }
 
@@ -1693,6 +1699,26 @@ function readDebugTestCases() {
     seen.add(item.input);
     return true;
   });
+}
+
+// Read live page state on every chat send, independently of the Python debugger.
+function readChatExecution() {
+  const visible = node => node.isConnected !== false
+    && !node.closest('.ocleet-panel, [hidden], [aria-hidden="true"]')
+    && node.getClientRects().length > 0;
+  const selectors = '[data-e2e-locator="console-result"], [data-e2e-locator="console-result-content"], [data-cy="test-result"], [role="tabpanel"]';
+  const panels = Array.from(document.querySelectorAll(selectors)).filter(node => {
+    if (!visible(node)) return false;
+    if (node.getAttribute('role') !== 'tabpanel') return true;
+    const labels = (node.getAttribute('aria-labelledby') || '').split(/\s+/)
+      .map(id => document.getElementById(id)?.textContent || '').join(' ');
+    return /test\s*result|测试结果|运行结果|执行结果/i.test((node.getAttribute('aria-label') || '') + ' ' + labels);
+  });
+  const roots = panels.filter(node => !panels.some(other => other !== node && other.contains(node)));
+  return {
+    testCases: readDebugTestCases(),
+    runResult: roots.map(node => node.innerText || node.textContent || '').join('\n').trim().slice(0, 12000),
+  };
 }
 
 // Runs in a new Worker for each case. No model credentials or page data are passed.
