@@ -31,7 +31,7 @@ function setup(saved = new Map(), options = {}) {
     readCode: () => ({ code: 'CURRENT_CODE', codeSource: 'model' }),
     resetMessages: () => { rendered.length = 0; },
     addMessage: (role, content) => { rendered.push({ role, content }); },
-    renderProblemChip() {}, setStatus() {},
+    renderProblemChip() {}, renderExecutionPreview() {}, setStatus() {},
     addAssistant: () => {
       const bubble = { role: 'assistant', content: '' };
       rendered.push(bubble);

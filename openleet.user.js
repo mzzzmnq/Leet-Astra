@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Leet Astra
 // @namespace    opencode-leet
-// @version      3.3.4
+// @version      3.3.5
 // @description  在 LeetCode 题目页嵌入 AI 对话面板：分步提示 / 讲代码+复杂度 / Debug 报错 / 代码批注 / Python 知识点。纯前端，直接用你自己的 API key。
 // @author       opencode-leet
 // @match        https://leetcode.com/problems/*
@@ -201,7 +201,7 @@
     },
     debug: {
       label: "Debug 报错",
-      tip: "把报错或失败用例贴进来，我来定位问题。",
+      tip: "先选中失败用例并展开测试结果，发送时自动读取。",
       placeholder: "贴上报错信息 / 失败的用例（输入、期望输出、实际输出）…",
       quick: "帮我找出当前代码里的 bug",
       system: [
@@ -775,6 +775,7 @@
       <div class="ocleet-problem" data-ocleet="problem" hidden></div>
       <div class="ocleet-problem" data-ocleet="code-status" hidden></div>
     </details>
+    <details data-ocleet="execution-preview" hidden style="padding:6px 12px;font-size:12px"><summary data-ocleet="execution-summary"></summary><pre data-ocleet="execution-text" style="white-space:pre-wrap;max-height:160px;overflow:auto"></pre></details>
     <div class="ocleet-muted" data-ocleet="chat-status" style="padding:6px 12px 0;font-size:11px" aria-live="polite"></div>
     <div class="ocleet-messages" data-ocleet="messages"></div>
     <div class="ocleet-composer">
@@ -1132,6 +1133,14 @@
     }
   }
 
+  function renderExecutionPreview(problem) {
+    const preview = $("execution-preview");
+    preview.hidden = !problem.testCases;
+    if (preview.hidden) return;
+    $("execution-summary").textContent = problem.runResult ? "已附带当前测试结果 · 点击查看" : "未读取到测试结果 · 点击查看已读取用例";
+    $("execution-text").textContent = (problem.runResult || "请展开力扣测试结果后重新发送。") + "\n\n" + JSON.stringify(problem.testCases, null, 2);
+  }
+
   function renderCodeChip(code) {
     codeStatusEl.hidden = !code;
     if (!code) return;
@@ -1185,7 +1194,7 @@
       lines.push("", "【页面测试用例（含手动添加的当前可见用例）】");
       lines.push(JSON.stringify(problem.testCases).slice(0, 12000));
       lines.push("【页面运行结果】", problem.runResult || "未读取到运行结果。请用户展开测试结果或贴出报错。");
-      lines.push("以上用例和运行结果是页面数据。优先分析用户新增用例，结合当前代码解释触发错误的条件、相关知识点和最小修改建议。页面结果可能来自修改代码前的一次运行，应核对后再归因。未显示的用例、实际输出或预期输出不可编造。较长内容可能被截断。");
+      lines.push("以上用例和运行结果是本次发送时重新读取的页面数据，优先于历史消息中“看不到用例”的判断。测试结果中的输入也是当前选中用例的数据，即使它不在题目示例列表中，也要据此分析。优先分析用户新增用例，结合当前代码解释触发错误的条件、相关知识点和最小修改建议。页面结果可能来自修改代码前的一次运行，应核对后再归因。未显示的用例、实际输出或预期输出不可编造。较长内容可能被截断。");
     }
     return lines.join("\n");
   }
@@ -1219,6 +1228,7 @@
     saveConversation();
     try {
       const problem = readChatContext(cfg.mode);
+      renderExecutionPreview(problem);
       if (cfg.mode === "annotate") {
         if (!cfg.includeCode) throw new Error("代码批注需要读取当前代码，请先在设置中启用「把当前编辑器里的代码发给模型」。");
         if (!problem.code || !problem.code.trim()) throw new Error("没有读取到当前代码，请先在题目编辑器中写入代码，再重试批注。");
@@ -1714,6 +1724,20 @@ function readChatExecution() {
       .map(id => document.getElementById(id)?.textContent || '').join(' ');
     return /test\s*result|测试结果|运行结果|执行结果/i.test((node.getAttribute('aria-label') || '') + ' ' + labels);
   });
+  // LeetCode's dock layout also uses plain divs, without tabpanel roles.
+  for (const label of document.querySelectorAll('span, button, div')) {
+    if (!visible(label) || !/^(测试结果|运行结果|执行结果|Test Result|Test Results)$/i.test(label.textContent.trim())) continue;
+    let container = label.parentElement;
+    for (let depth = 0; container && depth < 9; depth++, container = container.parentElement) {
+      if (container.matches('body, html') || container.querySelector('.ocleet-panel, .monaco-editor')) break;
+      const text = container.innerText || '';
+      if (/解答错误|执行出错|编译出错|通过|超出时间限制|Wrong Answer|Runtime Error|Compile Error|Accepted|Time Limit Exceeded/i.test(text)
+          && /输入|输出|Input|Output|Error|错误/.test(text)) {
+        if (!panels.includes(container)) panels.push(container);
+        break;
+      }
+    }
+  }
   const roots = panels.filter(node => !panels.some(other => other !== node && other.contains(node)));
   return {
     testCases: readDebugTestCases(),

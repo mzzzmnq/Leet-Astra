@@ -86,6 +86,20 @@ function readChatExecution() {
       .map(id => document.getElementById(id)?.textContent || '').join(' ');
     return /test\s*result|测试结果|运行结果|执行结果/i.test((node.getAttribute('aria-label') || '') + ' ' + labels);
   });
+  // LeetCode's dock layout also uses plain divs, without tabpanel roles.
+  for (const label of document.querySelectorAll('span, button, div')) {
+    if (!visible(label) || !/^(测试结果|运行结果|执行结果|Test Result|Test Results)$/i.test(label.textContent.trim())) continue;
+    let container = label.parentElement;
+    for (let depth = 0; container && depth < 9; depth++, container = container.parentElement) {
+      if (container.matches('body, html') || container.querySelector('.ocleet-panel, .monaco-editor')) break;
+      const text = container.innerText || '';
+      if (/解答错误|执行出错|编译出错|通过|超出时间限制|Wrong Answer|Runtime Error|Compile Error|Accepted|Time Limit Exceeded/i.test(text)
+          && /输入|输出|Input|Output|Error|错误/.test(text)) {
+        if (!panels.includes(container)) panels.push(container);
+        break;
+      }
+    }
+  }
   const roots = panels.filter(node => !panels.some(other => other !== node && other.contains(node)));
   return {
     testCases: readDebugTestCases(),
