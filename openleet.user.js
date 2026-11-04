@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Leet Astra
 // @namespace    opencode-leet
-// @version      3.4.2
+// @version      3.5.0
 // @description  在 LeetCode 题目页嵌入 AI 对话面板：分步提示 / 讲代码+复杂度 / Debug 报错 / 代码批注 / Python 知识点。纯前端，直接用你自己的 API key。
 // @author       opencode-leet
 // @match        https://leetcode.com/problems/*
@@ -709,6 +709,53 @@
 @keyframes ocleet-blink{0%,50%{opacity:1}50.01%,100%{opacity:0}}
 @media(max-height:600px){.ocleet-panel{height:calc(100dvh - 24px);bottom:12px}.ocleet-composer{padding:8px 12px}.ocleet-mode-row{padding-top:6px}}
 
+
+/* Compact application layout: consistent spacing, neutral surfaces, one accent. */
+.ocleet-panel{width:440px;border-radius:20px;height:min(82vh,780px)}
+.ocleet-head{padding:14px 16px;background:var(--ocleet-surface)}
+.ocleet-brand{font-size:14px;letter-spacing:-.025em;gap:10px}
+.ocleet-icon{min-width:32px;min-height:32px}
+.ocleet-settings{inset:64px 10px 10px;padding:16px;background:var(--ocleet-surface)}
+.ocleet-preferences{display:flex;align-items:center;gap:12px;font-size:12px;color:var(--ocleet-muted)}
+.ocleet-preferences kbd{margin-left:auto;border:1px solid var(--ocleet-line-strong);border-radius:6px;padding:3px 7px;font:11px ui-monospace,monospace}
+.ocleet-control-bar{display:flex;align-items:center;gap:12px;padding:14px 16px 10px}
+.ocleet-control-bar .ocleet-mode-select{flex:0 1 150px;width:150px;font-size:12px;border:1px solid var(--ocleet-line);background:var(--ocleet-raised);padding:8px}
+.ocleet-model-picker{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:transparent;border:0;text-align:right;color:var(--ocleet-muted);font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;padding:8px 0}
+.ocleet-model-picker:hover{color:var(--ocleet-accent)}
+.ocleet-work-tools{padding:0 16px 12px;gap:0}
+.ocleet-work-tools .ocleet-btn{border-radius:0;font-size:12px;padding:10px 3px;background:var(--ocleet-surface);font-weight:500;min-width:0}
+.ocleet-work-tools .ocleet-btn+button{border-left:0}
+.ocleet-work-tools .ocleet-btn:first-child{border-radius:9px 0 0 9px}
+.ocleet-work-tools .ocleet-btn:last-child{border-radius:0 9px 9px 0}
+.ocleet-work-tools .ocleet-btn:hover{background:var(--ocleet-hover)}
+.ocleet-context{margin:0 16px;padding:0 0 8px;border-bottom:1px solid var(--ocleet-line);max-height:22vh}
+.ocleet-context summary{font-size:11px;padding:2px 0;color:var(--ocleet-subtle)}
+.ocleet-problem{background:var(--ocleet-raised);border-color:var(--ocleet-line);color:var(--ocleet-muted)}
+.ocleet-messages{padding:18px 16px;gap:18px}
+.ocleet-msg{padding:11px 13px;border-radius:14px;line-height:1.75}
+.ocleet-msg:empty{display:none}
+.ocleet-msg.user{background:#4f46e5;border-bottom-right-radius:5px;max-width:90%}
+.ocleet-msg.assistant{border-color:transparent;border-bottom-left-radius:5px}
+.ocleet-composer{margin:0 12px 12px;padding:10px;border:1px solid var(--ocleet-line-strong);border-radius:14px;background:var(--ocleet-surface);box-shadow:0 1px 3px #00000008}
+.ocleet-composer:focus-within{border-color:var(--ocleet-focus);box-shadow:0 0 0 3px var(--ocleet-accent-bg)}
+.ocleet-composer textarea{background:transparent;border:0;padding:4px 3px;resize:vertical;min-height:60px;font-size:var(--ocleet-font-size,14px)}
+.ocleet-composer textarea:focus{outline:none}
+.ocleet-composer-row{margin-top:6px}
+.ocleet-composer .primary{background:#4f46e5;border-radius:9px;padding:9px 15px;box-shadow:0 1px 2px #0002}
+.ocleet-composer .primary:hover{background:#4338ca}
+.ocleet-note-tools summary{list-style:none;padding:6px;color:var(--ocleet-subtle);font-size:12px}
+.ocleet-note-tools summary::-webkit-details-marker{display:none}
+.ocleet-note-tools summary:hover{color:var(--ocleet-text)}
+.ocleet-note-menu{bottom:36px;min-width:168px;padding:6px;gap:2px}
+.ocleet-note-menu .ocleet-btn{border:0;background:transparent;text-align:left;font-weight:400}
+.ocleet-note-menu .ocleet-btn:hover{background:var(--ocleet-hover)}
+.ocleet-launcher{background:#4f46e5;border-radius:14px;height:42px;box-shadow:0 4px 14px #4f46e52e}
+.ocleet-panel [data-ocleet="execution-preview"]{margin:6px 16px 0;padding:8px!important;border:1px solid var(--ocleet-line);border-radius:8px;font-size:11px!important}
+.ocleet-panel [data-ocleet="execution-preview"] pre{max-height:120px!important;font:11px/1.6 ui-monospace,monospace;color:var(--ocleet-muted)}
+.ocleet-panel [data-ocleet="chat-status"][hidden]{display:none}
+@media(max-width:420px){.ocleet-control-bar{gap:8px}.ocleet-control-bar .ocleet-mode-select{flex-basis:130px;width:130px}.ocleet-work-tools .ocleet-btn{font-size:11px}.ocleet-head{padding:10px 14px}}
+@media(max-height:600px){.ocleet-panel{height:calc(100dvh - 24px)}.ocleet-head{padding:8px 14px}.ocleet-control-bar{padding-top:8px}.ocleet-composer textarea{min-height:42px}.ocleet-context{max-height:16vh}}
+
 /* Visibility uses Web Animations; theme and button transitions stay in CSS. */
 .ocleet-panel[data-ocleet-theme],.ocleet-head,.ocleet-composer,.ocleet-msg.assistant,.ocleet-pre{transition:background-color .18s ease,color .18s ease,border-color .18s ease,box-shadow .18s ease}
 .ocleet-panel :is(button,input,textarea,select,summary){transition:background-color .16s ease,color .16s ease,border-color .16s ease,box-shadow .16s ease}
@@ -734,7 +781,9 @@
   const launcher = document.createElement("button");
   launcher.className = "ocleet-launcher";
   launcher.type = "button";
-  launcher.textContent = "⌘ Leet Astra";
+  launcher.textContent = "Leet Astra";
+  launcher.title = "打开 / 收起 Leet Astra（Alt + Shift + A）";
+  launcher.setAttribute("aria-keyshortcuts", "Alt+Shift+A");
   document.body.appendChild(launcher);
 
   const panel = document.createElement("div");
@@ -745,17 +794,20 @@
     <div class="ocleet-head" data-ocleet="drag-handle" title="拖动标题栏移动窗口，双击恢复默认位置">
       <div class="ocleet-brand"><span class="ocleet-dot" data-ocleet="dot"></span><span>Leet Astra</span></div>
       <div class="ocleet-actions">
-        <div class="ocleet-font-controls" role="group" aria-label="对话字号">
-          <button class="ocleet-icon" type="button" data-ocleet="font-decrease" aria-label="缩小字体" title="缩小字体">A−</button>
-          <output data-ocleet="font-size" aria-live="polite"></output>
-          <button class="ocleet-icon" type="button" data-ocleet="font-increase" aria-label="放大字体" title="放大字体">A+</button>
-        </div>
         <button class="ocleet-icon" type="button" data-ocleet="settings" title="设置">⚙</button>
         <button class="ocleet-icon" type="button" data-ocleet="close" title="关闭">✕</button>
       </div>
     </div>
     <div class="ocleet-settings" data-ocleet="settings-box" hidden>
       <div class="ocleet-settings-title">模型与偏好<button class="ocleet-btn" type="button" data-ocleet="settings-done">完成</button></div>
+      <div class="ocleet-preferences"><span>字号</span>
+        <div class="ocleet-font-controls" role="group" aria-label="对话字号">
+          <button class="ocleet-icon" type="button" data-ocleet="font-decrease" aria-label="缩小字体" title="缩小字体">A−</button>
+          <output data-ocleet="font-size" aria-live="polite"></output>
+          <button class="ocleet-icon" type="button" data-ocleet="font-increase" aria-label="放大字体" title="放大字体">A+</button>
+        </div>
+        <kbd title="打开 / 收起助手">Alt ⇧ A</kbd>
+      </div>
       <div class="ocleet-section-label">模型连接</div><label class="ocleet-field"><span>供应商</span><select data-ocleet="provider">
         <option value="zhipu">智谱 GLM（免费）</option>
         <option value="openrouter">OpenRouter · 免费编码模型</option>
@@ -770,12 +822,10 @@
       <label class="ocleet-field"><span>LeetNote 令牌（ln_…）</span><input type="password" data-ocleet="leetnote-token" placeholder="ln_…" autocomplete="off" /></label>
       <label class="ocleet-check"><input type="checkbox" data-ocleet="include-ai" /><span>导入时把最近一次 AI 讲解写进笔记正文</span></label></details>
     </div>
-    <div class="ocleet-model-bar"><span>当前模型</span><button type="button" data-ocleet="model-shortcut"></button></div>
-    <div class="ocleet-mode-row"><label for="ocleet-mode">问答模式</label><select id="ocleet-mode" class="ocleet-mode-select" data-ocleet="tabs"></select></div>
+    <div class="ocleet-control-bar"><select id="ocleet-mode" aria-label="问答模式" class="ocleet-mode-select" data-ocleet="tabs"></select><button type="button" class="ocleet-model-picker" data-ocleet="model-shortcut" aria-label="选择模型"></button></div>
     <div class="ocleet-work-tools"><button class="ocleet-btn" type="button" data-ocleet="read">读取测试用例</button><button class="ocleet-btn" type="button" data-ocleet="read-code">读取当前代码</button><button class="ocleet-btn" type="button" data-ocleet="open-debugger">逐行调试</button></div>
-    <div class="ocleet-hint" data-ocleet="tip" style="padding:0 12px 6px"></div>
     <details class="ocleet-context">
-      <summary>题目与代码 · 读取详情</summary>
+      <summary>上下文</summary>
 
       <div class="ocleet-problem" data-ocleet="problem" hidden></div>
       <div class="ocleet-problem" data-ocleet="code-status" hidden></div>
@@ -786,12 +836,12 @@
     <div class="ocleet-composer">
       <textarea data-ocleet="input" rows="2" aria-label="消息"></textarea>
       <div class="ocleet-composer-row">
-        <details class="ocleet-note-tools" data-ocleet="note-tools"><summary>LeetNote</summary><div class="ocleet-note-menu">
+        <details class="ocleet-note-tools" data-ocleet="note-tools"><summary title="笔记与对话操作">更多 ···</summary><div class="ocleet-note-menu">
+          <button class="ocleet-btn" type="button" data-ocleet="clear">清空本题对话</button>
           <button class="ocleet-btn" type="button" data-ocleet="import">存入 LeetNote</button>
           <button class="ocleet-btn" type="button" data-ocleet="start-leetnote" title="通过本机启动器启动 LeetNote 全部服务">启动 LeetNote</button>
         </div></details>
         <div class="ocleet-btns">
-          <button class="ocleet-btn" type="button" data-ocleet="clear">清空</button>
           <button class="ocleet-btn" type="button" data-ocleet="stop-reply" hidden>停止回答</button>
           <button class="ocleet-btn primary" type="button" data-ocleet="send">发送</button>
         </div>
@@ -920,6 +970,7 @@
     clearTimeout(saveTimer);
     saveTimer = 0;
     if (!conversation?.key) {
+      chatStatusEl.hidden = false;
       chatStatusEl.textContent = "请在题目页使用，对话按题目自动保存";
       return;
     }
@@ -927,12 +978,13 @@
     const ok = store.set(conversation.key, {
       version: 1, messages: history, draft: conversation.draft, updatedAt: Date.now(),
     });
+    chatStatusEl.hidden = ok;
     chatStatusEl.textContent = ok ? "本题对话已自动保存" : "对话保存失败，请先复制重要内容再关闭页面";
   }
 
   function scheduleConversationSave() {
     if (saveTimer) return;
-    chatStatusEl.textContent = "正在保存本题对话…";
+    if (chatStatusEl.hidden) chatStatusEl.textContent = "正在保存本题对话…";
     saveTimer = setTimeout(saveConversation, 500);
   }
 
@@ -950,7 +1002,8 @@
     request.control.cancel?.();
     setBusy(false);
     saveConversation();
-    chatStatusEl.textContent = reason + " " + chatStatusEl.textContent;
+    chatStatusEl.textContent = reason + (chatStatusEl.hidden ? "" : " " + chatStatusEl.textContent);
+    chatStatusEl.hidden = false;
   }
 
   function syncConversation(force = false) {
@@ -968,6 +1021,7 @@
       if (message.content) addMessage(message.role, message.content);
       if (message.status !== "complete") addMessage("error", message.error || "上次回答未完成，已恢复收到的内容；可以重新提问。");
     }
+    chatStatusEl.hidden = !!key;
     chatStatusEl.textContent = key
       ? (history.length || conversation.draft ? "已恢复本题对话和草稿 · 自动保存" : "本题对话和草稿将自动保存")
       : "请在题目页使用，对话按题目自动保存";
@@ -1140,9 +1194,10 @@
 
   function renderExecutionPreview(problem) {
     const preview = $("execution-preview");
-    preview.hidden = !problem.testCases;
+    const explicitlyCaptured = typeof capturedExecution !== "undefined" && capturedExecution?.slug === currentSlug();
+    preview.hidden = !problem.testCases || (!problem.runResult && !explicitlyCaptured && cfg.mode !== "debug");
     if (preview.hidden) return;
-    $("execution-summary").textContent = problem.runResult ? "已附带当前测试结果 · 点击查看" : "未读取到当前测试结果 · 请展开输入与输出后重试";
+    $("execution-summary").textContent = problem.runResult ? "测试结果 · 已读取" : "未读取到测试结果";
     $("execution-text").scrollTop = 0;
     $("execution-text").textContent = (problem.runResult || "请展开力扣测试结果后重新发送。") + "\n\n" + JSON.stringify(problem.testCases.filter(item => item.source !== "question"), null, 2);
   }
@@ -1175,7 +1230,7 @@
     addMessage("assistant", codeStatus + (cfg.includeCode ? "" : "设置中已关闭发送代码，启用后才会附带到 AI 请求。"));
   }
 
-  const WELCOME = "选择问答模式后直接提问。题目自动读取，上方可读取测试用例和代码、启动逐行调试；点击当前模型切换免费模型。";
+  const WELCOME = "";
 
   function resetMessages() {
     messagesEl.textContent = "";
@@ -1479,8 +1534,9 @@
       tabsEl.appendChild(tab);
     }
     tabsEl.value = cfg.mode;
-    inputEl.placeholder = SKILLS[cfg.mode].placeholder;
-    $("tip").textContent = SKILLS[cfg.mode].tip;
+    inputEl.placeholder = cfg.mode === "knowledge" ? "询问 Python 语法…" : cfg.mode === "debug" ? "哪里出了问题？" : cfg.mode === "annotate" ? "想重点检查哪里？" : "输入你的问题…";
+    inputEl.title = "Enter 发送 · Shift + Enter 换行";
+    tabsEl.title = SKILLS[cfg.mode].tip;
     $("read").disabled = cfg.mode === "knowledge";
     $("read").title = cfg.mode === "knowledge" ? "知识点模式无需题目，可单独读取当前代码" : "读取当前测试用例与运行结果，点击后查看预览";
     $("read-code").title = "只读取当前编辑器代码；启用发送代码时附带到 AI 请求";
@@ -1507,7 +1563,8 @@
     $("provider-tip").textContent = provider.tip;
     $("model-tip").textContent = model?.tip || "";
     $("key-link").href = provider.keyUrl;
-    $("model-shortcut").textContent = (model?.label || cfg.model) + " ▾";
+    $("model-shortcut").textContent = (model?.label || cfg.model).replace(" · 免费", "") + " ▾";
+    $("model-shortcut").title = (model?.label || cfg.model) + " · 点击切换";
   }
 
   async function verifyKey() {
@@ -1531,15 +1588,28 @@
     }
   }
 
-  launcher.addEventListener("click", () => {
+  let panelReturnFocus = null;
+  function togglePanel() {
+    const opening = !panelVisibility.isVisible();
+    if (opening) panelReturnFocus = document.activeElement;
     syncConversation();
     panelVisibility.toggle();
     if (panelVisibility.isVisible()) {
       const problem = readProblem();
       renderProblemChip(problem);
+      (settingsVisibility.isVisible() ? $("settings-done") : inputEl).focus({ preventScroll: true });
+    } else if (panelReturnFocus?.isConnected) panelReturnFocus.focus({ preventScroll: true });
+  }
+  launcher.addEventListener("click", togglePanel);
+  document.addEventListener("keydown", event => {
+    if (event.defaultPrevented || event.isComposing || event.repeat) return;
+    if (event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey && event.code === "KeyA") {
+      event.preventDefault();
+      event.stopPropagation();
+      togglePanel();
     }
-  });
-  $("close").addEventListener("click", () => panelVisibility.setVisible(false));
+  }, true);
+  $("close").addEventListener("click", togglePanel);
   $("settings").addEventListener("click", () => {
     settingsVisibility.toggle();
     if (settingsVisibility.isVisible()) $("settings-done").focus();
