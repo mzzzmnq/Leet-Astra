@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Leet Astra
 // @namespace    opencode-leet
-// @version      3.5.0
+// @version      3.6.1
 // @description  在 LeetCode 题目页嵌入 AI 对话面板：分步提示 / 讲代码+复杂度 / Debug 报错 / 代码批注 / Python 知识点。纯前端，直接用你自己的 API key。
 // @author       opencode-leet
 // @match        https://leetcode.com/problems/*
@@ -225,7 +225,7 @@
       system: [
         "模式：代码批注。",
         "- 批注对象只取本次系统消息中的用户当前代码，不能使用历史对话中的旧代码或其他解法替代。",
-        "- 输出完整的带批注代码，允许超过默认 8 行限制；保留原代码、缩进、变量名和已有注释，只新增符合当前语言语法的注释，不修复或重写代码。",
+        "- 只输出一个带语言标记的 Markdown 代码块，代码块可直接复制运行；不加行号、省略号、占位符或块外说明。必须输出全部原代码，不遗漏导入、类、函数、测试代码。不要添加新的调用或运行入口。注释仅使用该语言的合法注释语法，不能把注释放进字符串或续行表达式。\n- 输出完整的带批注代码，允许超过默认 8 行限制；保留原代码、缩进、变量名和已有注释，只新增符合当前语言语法的注释，不修复或重写代码。",
         "- 在相关代码行上方添加简短注释，使用【知识点】、【提示】、【错误】或【待确认】标记。默认只批注最关键的 3–5 处，不逐行翻译；没有必要时可以更少。",
         "- 围绕题目考察点说明代码的作用。确定的错误才标【错误】，简要说明触发条件或反例；无法确认时标【待确认】，不要编造报错、约束或运行结果。",
         "- 提示只指出下一步修改方向，不直接提供替代解法。没有发现明确错误就不要硬加错误标记。",
@@ -378,29 +378,34 @@
     }
   }
 
-  function readCode() {
+  function findCodeEditor() {
+    const monaco = PAGE.monaco;
     try {
-      const monaco = PAGE.monaco;
-      const api = monaco?.editor;
       // Resolve the editor and its model afresh on every read (including sends
       // and exports). Model length/order does not identify the current editor.
-      if (typeof api?.getEditors === "function") {
-        const editors = [];
-        for (const editor of api.getEditors()) {
-          try {
-            const node = editor.getDomNode();
-            if (!visibleEditor(node)) continue;
-            const readOnlyOption = monaco.EditorOption?.readOnly;
-            if (readOnlyOption !== undefined && editor.getOption?.(readOnlyOption)) continue;
-            const result = readModel(editor.getModel());
-            if (result) editors.push({ node, result, focused: editor.hasTextFocus?.() });
-          } catch { /* A disposed editor must not hide the remaining editors. */ }
-        }
-        const pick = editors.find((entry) => entry.focused)
-          || editors.find((entry) => entry.node === lastCodeEditorNode)
-          || (editors.length === 1 ? editors[0] : null);
-        if (pick) return pick.result;
+      const editors = [];
+      for (const editor of monaco?.editor?.getEditors?.() || []) {
+        try {
+          const node = editor.getDomNode();
+          if (!visibleEditor(node)) continue;
+          const readOnlyOption = monaco.EditorOption?.readOnly;
+          if (readOnlyOption !== undefined && editor.getOption?.(readOnlyOption)) continue;
+          const model = editor.getModel();
+          const result = readModel(model);
+          if (result) editors.push({ editor, model, node, result, focused: editor.hasTextFocus?.() });
+        } catch { /* A disposed editor must not hide the remaining editors. */ }
       }
+      return editors.find((entry) => entry.focused)
+        || editors.find((entry) => entry.node === lastCodeEditorNode)
+        || (editors.length === 1 ? editors[0] : null);
+    } catch { return null; }
+  }
+
+  function readCode() {
+    const target = findCodeEditor();
+    if (target) return target.result;
+    try {
+      const api = PAGE.monaco?.editor;
       if (typeof api?.getModels === "function") {
         const candidates = api.getModels().map(readModel).filter(Boolean);
         const codey = candidates.filter((c) => c.lang && c.lang !== "markdown" && c.lang !== "plaintext");
@@ -437,9 +442,9 @@
     };
   }
 
-  function readChatContext(mode) {
+  function readChatContext(mode, codeSnapshot) {
     const problem = mode === "knowledge" ? {} : readProblem();
-    const code = cfg.includeCode && (mode !== "knowledge" || codeRequested) ? readCode() : null;
+    const code = cfg.includeCode && (mode !== "knowledge" || codeRequested) ? (codeSnapshot ?? readCode()) : null;
     return { ...problem, ...code, ...(mode === "knowledge" ? {} : (typeof capturedExecution !== "undefined" && capturedExecution?.slug === currentSlug() ? capturedExecution : readChatExecution())) };
   }
 
@@ -647,6 +652,7 @@
 .ocleet-field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ocleet-muted)}
 .ocleet-field input,.ocleet-field select{background:var(--ocleet-input);border:1px solid var(--ocleet-hover);border-radius:8px;color:var(--ocleet-text);padding:6px 8px;font:inherit;font-size:12.5px}
 .ocleet-check{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ocleet-muted)}
+.ocleet-panel [hidden]{display:none!important}
 .ocleet-mode-row{display:flex;align-items:center;gap:10px;padding:10px 12px 6px}
 .ocleet-mode-row label{font-size:12px;color:var(--ocleet-muted);flex-shrink:0}
 .ocleet-mode-select{min-width:0;flex:1;background:var(--ocleet-raised);color:var(--ocleet-text);border:1px solid var(--ocleet-line-strong);border-radius:8px;padding:7px 9px;font:inherit;font-size:13px}
@@ -765,6 +771,18 @@
 .ocleet-panel ::placeholder{color:var(--ocleet-subtle);opacity:1}
 .ocleet-panel :is(.ocleet-settings,.ocleet-note-menu,.ocleet-debugger){transition:background-color .18s ease,color .18s ease,border-color .18s ease}
 .ocleet-note-tools[open] .ocleet-note-menu{animation:ocleet-message-in .2s ease-out}
+/* Clear action hierarchy: actions, model, context tools, then conversation. */
+.ocleet-control-bar{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:12px 16px 8px}
+.ocleet-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.ocleet-actions .ocleet-btn{min-width:0;min-height:38px;text-align:left;padding:9px 12px;border-radius:10px;white-space:normal;line-height:1.4}
+.ocleet-actions .ocleet-btn:last-child{grid-column:1/-1;text-align:center}
+.ocleet-model-picker{align-self:flex-end;flex:none;font-size:11px;padding:3px 0;max-width:100%}
+.ocleet-work-tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;padding:4px 16px 10px}
+.ocleet-work-tools .ocleet-btn{min-width:0;padding:7px 4px;font-size:11px;white-space:normal}
+.ocleet-messages{padding:14px 16px;gap:14px;line-height:1.7}
+.ocleet-messages pre{max-width:100%;overflow-x:auto;line-height:1.65}
+.ocleet-composer{padding:10px 16px}
+@media(max-height:700px){.ocleet-actions .ocleet-btn{min-height:30px;padding:5px 10px}.ocleet-control-bar{gap:4px;padding-top:8px}.ocleet-work-tools{padding-bottom:6px}}
 .ocleet-panel :is(.ocleet-messages,.ocleet-settings,.ocleet-debug-code,.ocleet-debug-inspect){scrollbar-width:thin;scrollbar-color:var(--ocleet-line-strong) transparent}
 .ocleet-panel a{color:var(--ocleet-accent)}
 .ocleet-msg.user a{color:inherit}
@@ -822,7 +840,7 @@
       <label class="ocleet-field"><span>LeetNote 令牌（ln_…）</span><input type="password" data-ocleet="leetnote-token" placeholder="ln_…" autocomplete="off" /></label>
       <label class="ocleet-check"><input type="checkbox" data-ocleet="include-ai" /><span>导入时把最近一次 AI 讲解写进笔记正文</span></label></details>
     </div>
-    <div class="ocleet-control-bar"><select id="ocleet-mode" aria-label="问答模式" class="ocleet-mode-select" data-ocleet="tabs"></select><button type="button" class="ocleet-model-picker" data-ocleet="model-shortcut" aria-label="选择模型"></button></div>
+    <div class="ocleet-control-bar"><div id="ocleet-mode" aria-label="AI 功能" data-ocleet="tabs" class="ocleet-actions"></div><button type="button" class="ocleet-model-picker" data-ocleet="model-shortcut" aria-label="选择模型"></button></div>
     <div class="ocleet-work-tools"><button class="ocleet-btn" type="button" data-ocleet="read">读取测试用例</button><button class="ocleet-btn" type="button" data-ocleet="read-code">读取当前代码</button><button class="ocleet-btn" type="button" data-ocleet="open-debugger">逐行调试</button></div>
     <details class="ocleet-context">
       <summary>上下文</summary>
@@ -1528,12 +1546,19 @@
     if (!Object.hasOwn(SKILLS, cfg.mode)) cfg.mode = "hint";
     tabsEl.textContent = "";
     for (const [key, skill] of Object.entries(SKILLS)) {
-      const tab = document.createElement("option");
+      const tab = document.createElement("button");
+      tab.type = "button";
+      tab.className = "ocleet-btn" + (key === cfg.mode ? " primary" : "");
+      tab.dataset.mode = key;
+      tab.setAttribute("aria-pressed", String(key === cfg.mode));
+      tab.title = skill.tip;
       tab.value = key;
       tab.textContent = skill.label;
       tabsEl.appendChild(tab);
     }
     tabsEl.value = cfg.mode;
+    inputEl.hidden = cfg.mode !== "knowledge";
+    sendBtn.hidden = cfg.mode !== "knowledge";
     inputEl.placeholder = cfg.mode === "knowledge" ? "询问 Python 语法…" : cfg.mode === "debug" ? "哪里出了问题？" : cfg.mode === "annotate" ? "想重点检查哪里？" : "输入你的问题…";
     inputEl.title = "Enter 发送 · Shift + Enter 换行";
     tabsEl.title = SKILLS[cfg.mode].tip;
@@ -1616,10 +1641,20 @@
   });
   $("model-shortcut").addEventListener("click", () => { settingsVisibility.setVisible(true); modelSelect.focus(); });
   $("settings-done").addEventListener("click", () => { settingsVisibility.setVisible(false); $("settings").focus(); });
-  tabsEl.addEventListener("change", () => {
-    cfg.mode = tabsEl.value;
+  tabsEl.addEventListener("click", event => {
+    const button = event.target.closest("button[data-mode]");
+    if (!button || busy) return;
+    cfg.mode = button.dataset.mode;
     saveCfg();
     renderTabs();
+    if (cfg.mode === "knowledge") { inputEl.focus(); return; }
+    const draft = inputEl.value;
+    inputEl.value = SKILLS[cfg.mode].quick;
+    const pending = onSend();
+    inputEl.value = draft;
+    conversation.draft = draft;
+    saveConversation();
+    return pending;
   });
   panel.addEventListener("keydown", event => {
     if (event.key === "Escape") {
